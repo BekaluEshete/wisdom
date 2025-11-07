@@ -54,9 +54,11 @@ const register = async (req, res) => {
       req.files.nationalId[0].originalname
     )
 
-    // Generate email verification code
+    // Generate email verification code (4-digit code)
     const verificationCode = Math.floor(1000 + Math.random() * 9000).toString()
-    const emailVerificationExpires = new Date(Date.now() + 5 * 60 * 1000)
+    const emailVerificationExpires = new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
+    
+    console.log(`Generated verification code for ${email}: ${verificationCode}`)
 
     // Create new user
     const user = new User({
@@ -83,25 +85,41 @@ const register = async (req, res) => {
     await user.save()
 
     // Send email to user
-    await sendVerificationEmail(email, firstName, verificationCode)
+    let emailSent = false;
+    try {
+      await sendVerificationEmail(email, firstName, verificationCode);
+      emailSent = true;
+      console.log(`Verification email sent successfully to ${email}`);
+    } catch (emailError) {
+      console.error(`Failed to send verification email to ${email}:`, emailError);
+      // Continue with registration even if email fails, but log the error
+    }
 
-    // Notify admin
-    await sendAdminNotificationEmail(
-      'tommr2323@gmail.com',
-      'New User Registration Pending Verification',
-      'A new user has registered and is pending admin verification.',
-      user
-    )
+    // Notify admin (don't block registration if this fails)
+    try {
+      await sendAdminNotificationEmail(
+        'tommr2323@gmail.com',
+        'New User Registration Pending Verification',
+        'A new user has registered and is pending admin verification.',
+        user
+      );
+      console.log('Admin notification email sent successfully');
+    } catch (adminEmailError) {
+      console.error('Failed to send admin notification email:', adminEmailError);
+      // Continue even if admin email fails
+    }
 
     res.status(201).json({
       success: true,
-      message: 'Registration successful! Please check your email to verify your account.',
+      message: emailSent 
+        ? 'Registration successful! Please check your email to verify your account.'
+        : 'Registration successful! However, we encountered an issue sending the verification email. Please contact support.',
       data: {
         userId: user._id,
         email: user.email,
-        emailVerificationSent: true,
+        emailVerificationSent: emailSent,
         adminVerificationPending: true,
-        verificationCode,
+        verificationCode, // Include code in response for testing/debugging
       },
     })
   } catch (error) {
@@ -346,6 +364,13 @@ const resendVerificationEmail = async (req, res) => {
   try {
     const { email } = req.body;
 
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
     const user = await User.findOne({ email });
 
     if (!user) {
@@ -362,8 +387,10 @@ const resendVerificationEmail = async (req, res) => {
       });
     }
 
-const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
-    const emailVerificationExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
+    const emailVerificationExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+    console.log(`Resending verification code to ${email}: ${verificationCode}`);
 
     await User.updateOne(
       { email },
@@ -373,18 +400,26 @@ const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
       }
     );
 
-    await sendVerificationEmail(email, user.firstName, verificationCode);
-
-    res.json({
-      success: true,
-      message: "Verification code resent successfully",
-    });
+    try {
+      await sendVerificationEmail(email, user.firstName, verificationCode);
+      res.json({
+        success: true,
+        message: "Verification code resent successfully. Please check your email.",
+      });
+    } catch (emailError) {
+      console.error(`Failed to send verification email to ${email}:`, emailError);
+      res.status(500).json({
+        success: false,
+        message: "Failed to send verification email. Please try again later or contact support.",
+        error: process.env.NODE_ENV === 'development' ? emailError.message : undefined,
+      });
+    }
   } catch (error) {
     console.error("Resend verification error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to resend verification code",
-      error: error.message,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };

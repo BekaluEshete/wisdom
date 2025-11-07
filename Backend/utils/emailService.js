@@ -1,12 +1,25 @@
 require('dotenv').config();
 const nodemailer = require('nodemailer');
 
+// Gmail configuration
+const GMAIL_USER = process.env.GMAIL_USER || "tommr2323@gmail.com";
+const GMAIL_PASS = process.env.GMAIL_PASS || "ihes tjso xeff afdz";
+
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: "tommr2323@gmail.com",
-    pass: "ihes tjso xeff afdz",
+    user: GMAIL_USER,
+    pass: GMAIL_PASS,
   },
+});
+
+// Verify transporter configuration on startup
+transporter.verify(function (error, success) {
+  if (error) {
+    console.error('Email transporter verification failed:', error);
+  } else {
+    console.log('Email transporter is ready to send emails');
+  }
 });
 
 const wrapEmail = (title, content) => `
@@ -26,15 +39,36 @@ const wrapEmail = (title, content) => `
 `;
 
 const sendEmail = async (to, subject, html) => {
-  await transporter.sendMail({ from: process.env.GMAIL_USER, to, subject, html });
+  try {
+    const mailOptions = {
+      from: `"WisdomWalk" <${GMAIL_USER}>`,
+      to,
+      subject,
+      html,
+    };
+    
+    console.log(`Attempting to send email to: ${to}, subject: ${subject}`);
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`Email sent successfully to ${to}. MessageId: ${info.messageId}`);
+    return info;
+  } catch (error) {
+    console.error(`Error sending email to ${to}:`, error);
+    console.error('Error details:', {
+      code: error.code,
+      command: error.command,
+      response: error.response,
+    });
+    throw error;
+  }
 };
 
 const sendVerificationEmail = async (email, firstName, code) => {
   const content = `
-    <p>Hi ${firstName},</p>
-    <p>Please verify your email by using the following code:</p>
-    <div style="font-size: 32px; font-weight: bold; color: #A67B5B; letter-spacing: 8px; text-align: center;">${code}</div>
-    <p>This code will expire in 24 hours.</p>
+    <p>Hi ${firstName || 'there'},</p>
+    <p>Welcome to WisdomWalk! Please verify your email by using the following code:</p>
+    <div style="font-size: 32px; font-weight: bold; color: #A67B5B; letter-spacing: 8px; text-align: center; padding: 20px; background-color: #f9f5f0; border-radius: 8px; margin: 20px 0;">${code}</div>
+    <p style="color: #888; font-size: 14px;">This code will expire in 5 minutes.</p>
+    <p>If you didn't create an account with WisdomWalk, please ignore this email.</p>
   `;
   await sendEmail(email, '🌸 Verify Your Email - WisdomWalk', wrapEmail('Email Verification', content));
 };
