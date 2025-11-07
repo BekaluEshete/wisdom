@@ -2,38 +2,49 @@ require('dotenv').config();
 const nodemailer = require('nodemailer');
 
 // Gmail configuration
-const GMAIL_USER = process.env.GMAIL_USER || "tommr2323@gmail.com";
-const GMAIL_PASS = process.env.GMAIL_PASS || "ihes tjso xeff afdz";
+const GMAIL_USER = process.env.GMAIL_USER || "temesgenmarie97@gmail.com";
+const GMAIL_PASS = process.env.GMAIL_PASS || "cykl seqo wbfe yugb";
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // true for 465, false for other ports
-  auth: {
-    user: GMAIL_USER,
-    pass: GMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false
-  },
-  connectionTimeout: 10000, // 10 seconds
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
-});
+// Create transporter with better timeout settings
+// Note: Render may block SMTP connections. If this fails, consider using SendGrid, Mailgun, or Resend
+const createTransporter = (port = 465) => {
+  return nodemailer.createTransport({
+    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: port,
+    secure: port === 465, // true for 465, false for 587
+    auth: {
+      user: GMAIL_USER,
+      pass: GMAIL_PASS,
+    },
+    tls: {
+      rejectUnauthorized: false
+    },
+    connectionTimeout: 60000, // 60 seconds - increased for cloud platforms
+    greetingTimeout: 30000, // 30 seconds
+    socketTimeout: 60000, // 60 seconds
+    // Add pool configuration for better connection handling
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 3,
+  });
+};
 
-// Verify transporter configuration on startup
-transporter.verify(function (error, success) {
-  if (error) {
-    console.error('❌ Email transporter verification failed:', error);
-    console.error('Error code:', error.code);
-    console.error('Error command:', error.command);
-    console.error('Error response:', error.response);
-  } else {
-    console.log('✅ Email transporter is ready to send emails');
+// Try port 465 first (SSL), fallback to 587 (TLS) if needed
+let transporter = createTransporter(465);
+
+// Verify transporter configuration on startup (async)
+(async () => {
+  try {
+    await transporter.verify();
+    console.log('✅ Email transporter is ready to send emails (port 465)');
     console.log('Gmail user:', GMAIL_USER);
+  } catch (error) {
+    console.error('❌ Email transporter verification failed on port 465:', error.code);
+    console.error('Will try port 587 when sending emails...');
+    // Don't fail startup if verification fails - will try both ports when sending
   }
-});
+})();
 
 const wrapEmail = (title, content) => `
   <div style="font-family: 'Segoe UI', sans-serif; background-color: #fdf9f4; padding: 40px 20px; border-radius: 12px; max-width: 600px; margin: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
@@ -51,44 +62,83 @@ const wrapEmail = (title, content) => `
   </div>
 `;
 
-const sendEmail = async (to, subject, html) => {
-  try {
-    const mailOptions = {
-      from: `"WisdomWalk" <${GMAIL_USER}>`,
-      to,
-      subject,
-      html,
-      // Add text version for better compatibility
-      text: html.replace(/<[^>]*>/g, ''), // Strip HTML tags for text version
-    };
-    
-    console.log(`📧 Attempting to send email to: ${to}`);
-    console.log(`   Subject: ${subject}`);
-    console.log(`   From: ${GMAIL_USER}`);
-    
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`✅ Email sent successfully to ${to}`);
-    console.log(`   MessageId: ${info.messageId}`);
-    console.log(`   Response: ${info.response}`);
-    return info;
-  } catch (error) {
-    console.error(`❌ Error sending email to ${to}:`);
-    console.error(`   Error message: ${error.message}`);
-    console.error(`   Error code: ${error.code}`);
-    console.error(`   Error command: ${error.command}`);
-    console.error(`   Error response: ${error.response}`);
-    console.error(`   Full error:`, JSON.stringify(error, null, 2));
-    
-    // Provide more helpful error messages
-    if (error.code === 'EAUTH') {
-      console.error('   ⚠️  Authentication failed. Check Gmail app password.');
-    } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNECTION') {
-      console.error('   ⚠️  Connection timeout. Check network/firewall settings.');
-    } else if (error.code === 'EENVELOPE') {
-      console.error('   ⚠️  Invalid email address.');
+const sendEmail = async (to, subject, html, retries = 2) => {
+  let currentTransporter = transporter;
+  let triedPort465 = false;
+  let triedPort587 = false;
+  
+  for (let attempt = 1; attempt <= retries + 1; attempt++) {
+    try {
+      const mailOptions = {
+        from: `"WisdomWalk" <${GMAIL_USER}>`,
+        to,
+        subject,
+        html,
+        // Add text version for better compatibility
+        text: html.replace(/<[^>]*>/g, ''), // Strip HTML tags for text version
+      };
+      
+      console.log(`📧 Attempting to send email to: ${to} (Attempt ${attempt}/${retries + 1})`);
+      console.log(`   Subject: ${subject}`);
+      console.log(`   From: ${GMAIL_USER}`);
+      console.log(`   Using port: ${currentTransporter.options.port}`);
+      
+      const info = await currentTransporter.sendMail(mailOptions);
+      console.log(`✅ Email sent successfully to ${to}`);
+      console.log(`   MessageId: ${info.messageId}`);
+      console.log(`   Response: ${info.response}`);
+      return info;
+    } catch (error) {
+      console.error(`❌ Error sending email to ${to} (Attempt ${attempt}/${retries + 1}):`);
+      console.error(`   Error message: ${error.message}`);
+      console.error(`   Error code: ${error.code}`);
+      console.error(`   Error command: ${error.command}`);
+      console.error(`   Error response: ${error.response}`);
+      
+      // Provide more helpful error messages
+      if (error.code === 'EAUTH') {
+        console.error('   ⚠️  Authentication failed. Check Gmail app password.');
+        throw error; // Don't retry auth errors
+      } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNECTION') {
+        // Try switching ports if we haven't tried both
+        if (!triedPort587 && currentTransporter.options.port === 465) {
+          console.error('   ⚠️  Connection timeout on port 465. Trying port 587...');
+          triedPort465 = true;
+          currentTransporter = createTransporter(587);
+          triedPort587 = true;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue; // Retry with different port
+        } else if (!triedPort465 && currentTransporter.options.port === 587) {
+          console.error('   ⚠️  Connection timeout on port 587. Trying port 465...');
+          triedPort587 = true;
+          currentTransporter = createTransporter(465);
+          triedPort465 = true;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue; // Retry with different port
+        }
+        
+        console.error('   ⚠️  Connection timeout on both ports. Retrying...');
+        if (attempt <= retries) {
+          // Wait before retrying (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+          continue; // Retry
+        } else {
+          console.error('   ❌ All retry attempts failed. Connection timeout persists.');
+          console.error('   💡 TIP: Render may block SMTP connections. Consider using SendGrid, Mailgun, or Resend.');
+          throw error;
+        }
+      } else if (error.code === 'EENVELOPE') {
+        console.error('   ⚠️  Invalid email address.');
+        throw error; // Don't retry invalid email errors
+      } else {
+        // For other errors, retry once
+        if (attempt <= retries) {
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+          continue;
+        }
+        throw error;
+      }
     }
-    
-    throw error;
   }
 };
 
