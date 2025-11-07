@@ -1,152 +1,59 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:wisdomwalk/models/wisdom_circle_model.dart';
 import 'package:wisdomwalk/services/wisdom_circle_service.dart';
+import 'package:wisdomwalk/providers/auth_provider.dart';
 
-class WisdomCircleProvider extends ChangeNotifier {
-  final WisdomCircleService _wisdomCircleService = WisdomCircleService();
-  final Set<String> _joinedCircles = {'1', '3'};
+class WisdomCircleProvider with ChangeNotifier {
+  final WisdomCircleService _service = WisdomCircleService();
   List<WisdomCircleModel> _circles = [];
+  List<String> _joinedCircles = [];
   WisdomCircleModel? _selectedCircle;
   bool _isLoading = false;
   String? _error;
 
-  // Getters
   List<WisdomCircleModel> get circles => _circles;
-  Set<String> get joinedCircles => _joinedCircles;
+  List<String> get joinedCircles => _joinedCircles;
   WisdomCircleModel? get selectedCircle => _selectedCircle;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
-  WisdomCircleProvider() {
-    _initializeWithMockData();
-  }
-
-  void _initializeWithMockData() {
-    _circles = [
-      WisdomCircleModel(
-        id: '1',
-        name: 'Single & Purposeful',
-        description:
-            'A supportive community for single women walking in their God-given purpose.',
-        imageUrl:
-            'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&h=300&fit=crop',
-        memberCount: 127,
-        messages: [],
-        pinnedMessages: [],
-        events: [],
-      ),
-      WisdomCircleModel(
-        id: '2',
-        name: 'Marriage & Ministry',
-        description:
-            'Navigating the beautiful balance between marriage and ministry.',
-        imageUrl:
-            'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=400&h=300&fit=crop',
-        memberCount: 89,
-        messages: [],
-        pinnedMessages: [],
-        events: [],
-      ),
-      WisdomCircleModel(
-        id: '3',
-        name: 'Motherhood in Christ',
-        description:
-            'Raising children with biblical wisdom and finding strength in Christian motherhood.',
-        imageUrl:
-            'https://images.unsplash.com/photo-1476703993599-0035a21b17a9?w=400&h=300&fit=crop',
-        memberCount: 156,
-        messages: [],
-        pinnedMessages: [],
-        events: [],
-      ),
-      WisdomCircleModel(
-        id: '4',
-        name: 'Healing & Forgiveness',
-        description:
-            'A safe space for healing from past wounds and learning to forgive.',
-        imageUrl:
-            'https://images.unsplash.com/photo-1544027993-37dbfe43562a?w=400&h=300&fit=crop',
-        memberCount: 203,
-        messages: [],
-        pinnedMessages: [],
-        events: [],
-      ),
-      WisdomCircleModel(
-        id: '5',
-        name: 'Mental Health & Faith',
-        description:
-            'Addressing mental health challenges through faith, prayer, and professional support.',
-        imageUrl:
-            'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400&h=300&fit=crop',
-        memberCount: 94,
-        messages: [],
-        pinnedMessages: [],
-        events: [],
-      ),
-    ];
-    notifyListeners();
-  }
-
-  Future<void> fetchCircles() async {
+  Future<void> fetchCircles(BuildContext context) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      _circles = await _wisdomCircleService.getWisdomCircles();
+      final userId =
+          Provider.of<AuthProvider>(context, listen: false).currentUser?.id;
+      print('Fetching circles for user ID: $userId');
+      _circles = await _service.getWisdomCircles(context);
+      _joinedCircles =
+          _circles
+              .where((circle) {
+                // Check if user is in members list (based on backend response structure)
+                final response =
+                    _service
+                        .getLastResponse(); // Assume service stores last response
+                final group = response['groups']?.firstWhere(
+                  (g) => g['_id'] == circle.id,
+                  orElse: () => null,
+                );
+                if (group == null || userId == null) return false;
+                final members = group['members'] as List<dynamic>? ?? [];
+                return members.any((m) => m['user']?['_id'] == userId);
+              })
+              .map((circle) => circle.id)
+              .toList();
+      print(
+        'Fetched ${_circles.length} circles, joined: ${_joinedCircles.length}',
+      );
     } catch (e) {
       _error = e.toString();
-      _initializeWithMockData();
+      print('Error fetching circles: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
-    }
-  }
-
-  Future<bool> joinCircle({
-    required String circleId,
-    required String userId,
-  }) async {
-    try {
-      await _wisdomCircleService.joinCircle(circleId: circleId, userId: userId);
-      _joinedCircles.add(circleId);
-      final index = _circles.indexWhere((circle) => circle.id == circleId);
-      if (index != -1) {
-        _circles[index] = _circles[index].copyWith(
-          memberCount: _circles[index].memberCount + 1,
-        );
-      }
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _error = e.toString();
-      notifyListeners();
-      return false;
-    }
-  }
-
-  Future<bool> leaveCircle({
-    required String circleId,
-    required String userId,
-  }) async {
-    try {
-      await _wisdomCircleService.leaveCircle(
-        circleId: circleId,
-        userId: userId,
-      );
-      _joinedCircles.remove(circleId);
-      final index = _circles.indexWhere((circle) => circle.id == circleId);
-      if (index != -1) {
-        _circles[index] = _circles[index].copyWith(
-          memberCount: _circles[index].memberCount - 1,
-        );
-      }
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _error = e.toString();
-      notifyListeners();
-      return false;
     }
   }
 
@@ -156,18 +63,80 @@ class WisdomCircleProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _selectedCircle = await _wisdomCircleService.getWisdomCircleDetails(
-        circleId,
-      );
+      _selectedCircle = await _service.getWisdomCircleDetails(circleId);
+      print('Fetched details for circle $circleId');
     } catch (e) {
       _error = e.toString();
+      print('Error fetching circle details: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  Future<bool> sendMessage({
+  Future<void> joinCircle({
+    required String circleId,
+    required String userId,
+  }) async {
+    try {
+      await _service.joinCircle(circleId: circleId, userId: userId);
+      _joinedCircles.add(circleId);
+      if (_selectedCircle?.id == circleId) {
+        _selectedCircle = WisdomCircleModel(
+          id: _selectedCircle!.id,
+          name: _selectedCircle!.name,
+          description: _selectedCircle!.description,
+          imageUrl: _selectedCircle!.imageUrl,
+          memberCount: _selectedCircle!.memberCount + 1,
+          messages: _selectedCircle!.messages,
+          pinnedMessages: _selectedCircle!.pinnedMessages,
+          events: _selectedCircle!.events,
+          topicType: _selectedCircle!.topicType,
+          isPrivate: _selectedCircle!.isPrivate,
+        );
+      }
+      print('Joined circle $circleId for user $userId');
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      print('Error joining circle: $e');
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> leaveCircle({
+    required String circleId,
+    required String userId,
+  }) async {
+    try {
+      await _service.leaveCircle(circleId: circleId, userId: userId);
+      _joinedCircles.remove(circleId);
+      if (_selectedCircle?.id == circleId) {
+        _selectedCircle = WisdomCircleModel(
+          id: _selectedCircle!.id,
+          name: _selectedCircle!.name,
+          description: _selectedCircle!.description,
+          imageUrl: _selectedCircle!.imageUrl,
+          memberCount: _selectedCircle!.memberCount - 1,
+          messages: _selectedCircle!.messages,
+          pinnedMessages: _selectedCircle!.pinnedMessages,
+          events: _selectedCircle!.events,
+          topicType: _selectedCircle!.topicType,
+          isPrivate: _selectedCircle!.isPrivate,
+        );
+      }
+      print('Left circle $circleId for user $userId');
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      print('Error leaving circle: $e');
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> sendMessage({
     required String circleId,
     required String userId,
     required String userName,
@@ -175,92 +144,111 @@ class WisdomCircleProvider extends ChangeNotifier {
     required String content,
   }) async {
     try {
-      final message = await _wisdomCircleService.sendMessage(
+      final message = await _service.sendMessage(
         circleId: circleId,
         userId: userId,
         userName: userName,
         userAvatar: userAvatar,
         content: content,
       );
-
       if (_selectedCircle?.id == circleId) {
-        final updatedMessages = List<WisdomCircleMessage>.from(
-          _selectedCircle!.messages,
-        )..add(message);
-        _selectedCircle = _selectedCircle!.copyWith(messages: updatedMessages);
-        notifyListeners();
+        _selectedCircle = WisdomCircleModel(
+          id: _selectedCircle!.id,
+          name: _selectedCircle!.name,
+          description: _selectedCircle!.description,
+          imageUrl: _selectedCircle!.imageUrl,
+          memberCount: _selectedCircle!.memberCount,
+          messages: [..._selectedCircle!.messages, message],
+          pinnedMessages: _selectedCircle!.pinnedMessages,
+          events: _selectedCircle!.events,
+          topicType: _selectedCircle!.topicType,
+          isPrivate: _selectedCircle!.isPrivate,
+        );
       }
-      return true;
+      print('Sent message to circle $circleId');
+      notifyListeners();
     } catch (e) {
       _error = e.toString();
+      print('Error sending message: $e');
       notifyListeners();
-      return false;
+      rethrow;
     }
   }
 
-  Future<bool> toggleLikeMessage({
+  Future<void> toggleLikeMessage({
     required String circleId,
     required String messageId,
     required String userId,
+    required bool isLiked,
   }) async {
     try {
-      final circle = _selectedCircle;
-      if (circle == null || circle.id != circleId) return false;
-
-      final updatedMessages =
-          circle.messages.map((message) {
-            if (message.id == messageId) {
-              final updatedLikes = List<String>.from(message.likes);
-              if (updatedLikes.contains(userId)) {
-                updatedLikes.remove(userId);
-              } else {
-                updatedLikes.add(userId);
+      await _service.updateMessageLikes(
+        circleId: circleId,
+        messageId: messageId,
+        likes:
+            isLiked
+                ? _selectedCircle!.messages
+                    .firstWhere((m) => m.id == messageId)
+                    .likes
+                    .where((id) => id != userId)
+                    .toList()
+                : [
+                  ..._selectedCircle!.messages
+                      .firstWhere((m) => m.id == messageId)
+                      .likes,
+                  userId,
+                ],
+      );
+      if (_selectedCircle?.id == circleId) {
+        final updatedMessages =
+            _selectedCircle!.messages.map((m) {
+              if (m.id == messageId) {
+                return WisdomCircleMessage(
+                  id: m.id,
+                  userId: m.userId,
+                  userName: m.userName,
+                  userAvatar: m.userAvatar,
+                  content: m.content,
+                  createdAt: m.createdAt,
+                  likes:
+                      isLiked
+                          ? m.likes.where((id) => id != userId).toList()
+                          : [...m.likes, userId],
+                );
               }
-              return message.copyWith(likes: updatedLikes);
-            }
-            return message;
-          }).toList();
-
-      _selectedCircle = circle.copyWith(messages: updatedMessages);
+              return m;
+            }).toList();
+        _selectedCircle = WisdomCircleModel(
+          id: _selectedCircle!.id,
+          name: _selectedCircle!.name,
+          description: _selectedCircle!.description,
+          imageUrl: _selectedCircle!.imageUrl,
+          memberCount: _selectedCircle!.memberCount,
+          messages: updatedMessages,
+          pinnedMessages: _selectedCircle!.pinnedMessages,
+          events: _selectedCircle!.events,
+          topicType: _selectedCircle!.topicType,
+          isPrivate: _selectedCircle!.isPrivate,
+        );
+      }
+      print('Toggled like for message $messageId in circle $circleId');
       notifyListeners();
-
-      await updateMessageLikes(
-        circleId: circleId,
-        messageId: messageId,
-        likes: updatedMessages.firstWhere((m) => m.id == messageId).likes,
-      );
-      return true;
     } catch (e) {
       _error = e.toString();
+      print('Error toggling like: $e');
       notifyListeners();
-      return false;
+      rethrow;
     }
-  }
-
-  Future<void> updateMessageLikes({
-    required String circleId,
-    required String messageId,
-    required List<String> likes,
-  }) async {
-    try {
-      await _wisdomCircleService.updateMessageLikes(
-        circleId: circleId,
-        messageId: messageId,
-        likes: likes,
-      );
-    } catch (e) {
-      _error = e.toString();
-      notifyListeners();
-    }
-  }
-
-  void clearSelectedCircle() {
-    _selectedCircle = null;
-    notifyListeners();
   }
 
   void clearError() {
     _error = null;
     notifyListeners();
+  }
+
+  // Temporary method to access last response (replace with proper backend fix)
+  Map<String, dynamic> getLastResponse() {
+    // Assume service stores last response; implement in WisdomCircleService
+    return {};
   }
 }

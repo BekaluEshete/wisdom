@@ -1,9 +1,15 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wisdomwalk/models/wisdom_circle_model.dart';
+import 'package:wisdomwalk/providers/auth_provider.dart';
 import 'package:wisdomwalk/providers/wisdom_circle_provider.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:wisdomwalk/services/local_storage_service.dart';
 import 'package:wisdomwalk/widgets/wisdom_circle_card.dart';
 
 class WisdomCirclesTab extends StatefulWidget {
@@ -17,6 +23,9 @@ class _WisdomCirclesTabState extends State<WisdomCirclesTab>
     with TickerProviderStateMixin {
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
+  List<WisdomCircleEvent> _upcomingEvents = [];
+  String? _eventsError;
+  bool _isFetchingCircles = false;
 
   @override
   void initState() {
@@ -30,6 +39,67 @@ class _WisdomCirclesTabState extends State<WisdomCirclesTab>
       end: 1.0,
     ).animate(CurvedAnimation(parent: _fadeController, curve: Curves.easeOut));
     _fadeController.forward();
+    _fetchUpcomingEvents();
+    _fetchCirclesIfNeeded();
+  }
+
+  Future<void> _fetchCirclesIfNeeded() async {
+    if (!_isFetchingCircles) {
+      setState(() => _isFetchingCircles = true);
+      try {
+        await Provider.of<WisdomCircleProvider>(
+          context,
+          listen: false,
+        ).fetchCircles(context);
+      } finally {
+        setState(() => _isFetchingCircles = false);
+      }
+    }
+  }
+
+  Future<void> _fetchUpcomingEvents() async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('https://wisdom-walk-app.onrender.com/api/events'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization':
+                  'Bearer ${await LocalStorageService().getAuthToken()}',
+            },
+          )
+          .timeout(Duration(seconds: 10));
+
+      print(
+        'Events response: status=${response.statusCode}, body=${response.body}',
+      ); // Debug log
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success']) {
+          setState(() {
+            _upcomingEvents =
+                (data['data'] as List)
+                    .map((event) => WisdomCircleEvent.fromJson(event))
+                    .toList();
+            _eventsError = null;
+          });
+        } else {
+          setState(() {
+            _eventsError = data['message'] ?? 'Failed to fetch events';
+          });
+        }
+      } else {
+        setState(() {
+          _eventsError = 'HTTP ${response.statusCode}: Failed to fetch events';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _eventsError = 'Error fetching events: ${e.toString()}';
+      });
+      print('Error fetching events: $e');
+    }
   }
 
   @override
@@ -69,6 +139,18 @@ class _WisdomCirclesTabState extends State<WisdomCirclesTab>
             ),
           ),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed:
+                _isFetchingCircles
+                    ? null
+                    : () {
+                      _fetchCirclesIfNeeded();
+                      _fetchUpcomingEvents();
+                    },
+          ),
+        ],
       ),
       body: FadeTransition(
         opacity: _fadeAnimation,
@@ -148,7 +230,7 @@ class _WisdomCirclesTabState extends State<WisdomCirclesTab>
                               )
                               .toList();
 
-                      if (myCircles.isEmpty && provider.isLoading) {
+                      if (provider.isLoading || _isFetchingCircles) {
                         return Container(
                           height: 200,
                           decoration: BoxDecoration(
@@ -163,6 +245,51 @@ class _WisdomCirclesTabState extends State<WisdomCirclesTab>
                                 Color(0xFF74B9FF),
                               ),
                             ),
+                          ),
+                        );
+                      }
+
+                      if (provider.error != null) {
+                        String errorMessage =
+                            provider.error!.contains('timed out')
+                                ? 'Network issue: Unable to connect to server. Please check your internet.'
+                                : provider.error!.contains('403')
+                                ? 'Access restricted: Join a group to view chats.'
+                                : 'Error loading circles: ${provider.error}';
+                        return Container(
+                          padding: const EdgeInsets.all(32),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Colors.grey[50]!, Colors.white],
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.grey[200]!),
+                          ),
+                          child: Column(
+                            children: [
+                              const Icon(
+                                Icons.error_outline,
+                                size: 32,
+                                color: Colors.red,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                errorMessage,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: Color(0xFF636E72),
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton(
+                                onPressed: _fetchCirclesIfNeeded,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF74B9FF),
+                                ),
+                                child: const Text('Retry'),
+                              ),
+                            ],
                           ),
                         );
                       }
@@ -252,7 +379,7 @@ class _WisdomCirclesTabState extends State<WisdomCirclesTab>
                               )
                               .toList();
 
-                      if (discoverCircles.isEmpty && provider.isLoading) {
+                      if (provider.isLoading || _isFetchingCircles) {
                         return Container(
                           height: 200,
                           decoration: BoxDecoration(
@@ -267,6 +394,89 @@ class _WisdomCirclesTabState extends State<WisdomCirclesTab>
                                 Color(0xFF74B9FF),
                               ),
                             ),
+                          ),
+                        );
+                      }
+
+                      if (provider.error != null) {
+                        String errorMessage =
+                            provider.error!.contains('timed out')
+                                ? 'Network issue: Unable to connect to server. Please check your internet.'
+                                : provider.error!.contains('403')
+                                ? 'Access restricted: Some groups require membership to view.'
+                                : 'Error loading circles: ${provider.error}';
+                        return Container(
+                          padding: const EdgeInsets.all(32),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Colors.grey[50]!, Colors.white],
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.grey[200]!),
+                          ),
+                          child: Column(
+                            children: [
+                              const Icon(
+                                Icons.error_outline,
+                                size: 32,
+                                color: Colors.red,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                errorMessage,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: Color(0xFF636E72),
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton(
+                                onPressed: _fetchCirclesIfNeeded,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF74B9FF),
+                                ),
+                                child: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      if (discoverCircles.isEmpty) {
+                        return Container(
+                          padding: const EdgeInsets.all(32),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Colors.grey[50]!, Colors.white],
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.grey[200]!),
+                          ),
+                          child: Column(
+                            children: [
+                              const Icon(
+                                Icons.explore,
+                                size: 32,
+                                color: Color(0xFF636E72),
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'No circles available to discover',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: Color(0xFF636E72),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Check back later or ensure you have an active internet connection',
+                                style: TextStyle(color: Color(0xFF636E72)),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
                           ),
                         );
                       }
@@ -286,7 +496,12 @@ class _WisdomCirclesTabState extends State<WisdomCirclesTab>
                                       );
                                   provider.joinCircle(
                                     circleId: circle.id,
-                                    userId: 'user123',
+                                    userId:
+                                        Provider.of<AuthProvider>(
+                                          context,
+                                          listen: false,
+                                        ).currentUser?.id ??
+                                        'user123',
                                   );
                                 },
                               );
@@ -304,22 +519,92 @@ class _WisdomCirclesTabState extends State<WisdomCirclesTab>
                     ),
                   ),
                   const SizedBox(height: 20),
-                  _buildLiveChatItem(
-                    'Marriage & Ministry',
-                    'Building Strong Foundations',
-                    'Tonight 8PM',
-                    const LinearGradient(
-                      colors: [Color(0xFF6C5CE7), Color(0xFFA29BFE)],
+                  if (_eventsError != null)
+                    Container(
+                      padding: const EdgeInsets.all(32),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.grey[50]!, Colors.white],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.grey[200]!),
+                      ),
+                      child: Column(
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            size: 32,
+                            color: Colors.red,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _eventsError!.contains('timed out')
+                                ? 'Network issue: Unable to connect to server. Please check your internet.'
+                                : _eventsError!,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Color(0xFF636E72),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: _fetchUpcomingEvents,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF74B9FF),
+                            ),
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (_upcomingEvents.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(32),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.grey[50]!, Colors.white],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.grey[200]!),
+                      ),
+                      child: Column(
+                        children: [
+                          const Icon(
+                            Icons.event,
+                            size: 32,
+                            color: Color(0xFF636E72),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No upcoming live chats',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: const Color(0xFF636E72),
+                              fontWeight: FontWeight.w600,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Check back later for new events',
+                            style: TextStyle(color: Color(0xFF636E72)),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    ..._upcomingEvents.map(
+                      (event) => _buildLiveChatItem(
+                        event.title,
+                        event.description,
+                        _formatEventTime(event.date),
+                        const LinearGradient(
+                          colors: [Color(0xFF74B9FF), Color(0xFF0984E3)],
+                        ),
+                      ),
                     ),
-                  ),
-                  _buildLiveChatItem(
-                    'Healing & Hope',
-                    'Finding Peace in Storms',
-                    'Tomorrow 7PM',
-                    const LinearGradient(
-                      colors: [Color(0xFF74B9FF), Color(0xFF0984E3)],
-                    ),
-                  ),
                   const SizedBox(height: 100),
                 ],
               ),
@@ -359,7 +644,7 @@ class _WisdomCirclesTabState extends State<WisdomCirclesTab>
           borderRadius: BorderRadius.circular(20),
           onTap: () {
             HapticFeedback.lightImpact();
-            // Handle live chat tap
+            // Handle live chat tap (e.g., open event.link)
           },
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -433,355 +718,19 @@ class _WisdomCirclesTabState extends State<WisdomCirclesTab>
       ),
     );
   }
-}
 
-// WisdomCircleCard Implementation
-class WisdomCircleCard extends StatefulWidget {
-  final WisdomCircleModel circle;
-  final bool isJoined;
-  final VoidCallback onTap;
+  String _formatEventTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = dateTime.difference(now);
 
-  const WisdomCircleCard({
-    Key? key,
-    required this.circle,
-    required this.isJoined,
-    required this.onTap,
-  }) : super(key: key);
-
-  @override
-  State<WisdomCircleCard> createState() => _WisdomCircleCardState();
-}
-
-class _WisdomCircleCardState extends State<WisdomCircleCard>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _scaleAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 150),
-      vsync: this,
-    );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final provider = Provider.of<WisdomCircleProvider>(context, listen: false);
-    final hasNewMessages = true; // Simulate new messages for demo
-    final sampleMessage = 'Ms: "Thank you all for the prayers! ✨"';
-
-    LinearGradient cardGradient = _getCardGradient();
-    LinearGradient iconGradient = _getIconGradient();
-    String buttonText = widget.isJoined ? 'Open' : 'Join';
-    LinearGradient buttonGradient =
-        widget.isJoined
-            ? const LinearGradient(
-              colors: [Color(0xFF00B894), Color(0xFF00CEC9)],
-            )
-            : const LinearGradient(
-              colors: [Color(0xFF6C5CE7), Color(0xFF74B9FF)],
-            );
-
-    return AnimatedBuilder(
-      animation: _scaleAnimation,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: _scaleAnimation.value,
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(
-              gradient: cardGradient,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: () {
-                  _animationController.forward().then((_) {
-                    _animationController.reverse();
-                  });
-                  widget.onTap();
-                },
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              gradient: iconGradient,
-                              borderRadius: BorderRadius.circular(50),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: iconGradient.colors.first.withOpacity(
-                                    0.3,
-                                  ),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Text(
-                              widget.circle.name[0],
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  widget.circle.name,
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2D3436),
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  widget.circle.description,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Color(0xFF636E72),
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            decoration: BoxDecoration(
-                              gradient: buttonGradient,
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: buttonGradient.colors.first
-                                      .withOpacity(0.3),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: ElevatedButton(
-                              onPressed: () async {
-                                HapticFeedback.lightImpact();
-                                if (widget.isJoined) {
-                                  widget.onTap();
-                                } else {
-                                  await provider.joinCircle(
-                                    circleId: widget.circle.id,
-                                    userId: 'user123',
-                                  );
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        '✅ Joined ${widget.circle.name}!',
-                                      ),
-                                      backgroundColor: const Color(0xFF00B894),
-                                      behavior: SnackBarBehavior.floating,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                  );
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 8,
-                                ),
-                              ),
-                              child: Text(
-                                buttonText,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.8),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.people,
-                                  size: 14,
-                                  color: Color(0xFF636E72),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '${widget.circle.memberCount} members',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF636E72),
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (hasNewMessages) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFFE84393),
-                                    Color(0xFFD63031),
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Text(
-                                '⭕ 3 new messages',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.8),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          sampleMessage,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF2D3436),
-                            fontStyle: FontStyle.italic,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  LinearGradient _getCardGradient() {
-    switch (widget.circle.id) {
-      case '1': // Single & Purposeful
-        return const LinearGradient(
-          colors: [Color(0xFFFFE4E6), Color(0xFFFFF0F2)],
-        );
-      case '2': // Marriage & Ministry
-        return const LinearGradient(
-          colors: [Color(0xFFE8E4FF), Color(0xFFF0EDFF)],
-        );
-      case '3': // Motherhood in Christ
-        return const LinearGradient(
-          colors: [Color(0xFFE4F3FF), Color(0xFFF0F9FF)],
-        );
-      case '4': // Healing & Forgiveness
-        return const LinearGradient(
-          colors: [Color(0xFFE4FFE8), Color(0xFFF0FFF2)],
-        );
-      case '5': // Mental Health & Faith
-        return const LinearGradient(
-          colors: [Color(0xFFFFF4E4), Color(0xFFFFF9F0)],
-        );
-      default:
-        return const LinearGradient(
-          colors: [Color(0xFFF5F5F5), Color(0xFFFAFAFA)],
-        );
-    }
-  }
-
-  LinearGradient _getIconGradient() {
-    switch (widget.circle.id) {
-      case '1':
-        return const LinearGradient(
-          colors: [Color(0xFFE91E63), Color(0xFFAD1457)],
-        );
-      case '2':
-        return const LinearGradient(
-          colors: [Color(0xFF9C27B0), Color(0xFF6A1B9A)],
-        );
-      case '3':
-        return const LinearGradient(
-          colors: [Color(0xFF2196F3), Color(0xFF1565C0)],
-        );
-      case '4':
-        return const LinearGradient(
-          colors: [Color(0xFF4CAF50), Color(0xFF2E7D32)],
-        );
-      case '5':
-        return const LinearGradient(
-          colors: [Color(0xFFFF9800), Color(0xFFE65100)],
-        );
-      default:
-        return const LinearGradient(
-          colors: [Color(0xFF9E9E9E), Color(0xFF616161)],
-        );
+    if (difference.inDays > 1) {
+      return '${dateTime.day}/${dateTime.month} ${dateTime.hour}:${dateTime.minute}';
+    } else if (difference.inDays == 1) {
+      return 'Tomorrow ${dateTime.hour}:${dateTime.minute}';
+    } else if (difference.inHours > 0) {
+      return 'Today ${dateTime.hour}:${dateTime.minute}';
+    } else {
+      return 'Soon';
     }
   }
 }

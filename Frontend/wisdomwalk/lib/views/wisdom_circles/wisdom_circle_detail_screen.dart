@@ -7,8 +7,7 @@ import 'package:wisdomwalk/providers/auth_provider.dart';
 class WisdomCircleDetailScreen extends StatefulWidget {
   final String circleId;
 
-  const WisdomCircleDetailScreen({Key? key, required this.circleId})
-    : super(key: key);
+  const WisdomCircleDetailScreen({super.key, required this.circleId});
 
   @override
   State<WisdomCircleDetailScreen> createState() =>
@@ -24,6 +23,7 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<WisdomCircleProvider>();
+      print('Fetching details for circle ID: ${widget.circleId}');
       if (provider.selectedCircle == null ||
           provider.selectedCircle!.id != widget.circleId) {
         provider.fetchCircleDetails(widget.circleId);
@@ -85,7 +85,7 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
                   const Icon(Icons.error_outline, size: 64, color: Colors.red),
                   const SizedBox(height: 16),
                   Text(
-                    'Error loading circle',
+                    'Error loading circle: ${provider.error}',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 16),
@@ -114,10 +114,34 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
             listen: false,
           );
           final isJoined = provider.joinedCircles.contains(widget.circleId);
+          final user = authProvider.currentUser;
+
+          if (user == null) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Please log in to view this circle',
+                    style: TextStyle(fontSize: 18, color: Colors.black87),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => context.push('/login'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE91E63),
+                    ),
+                    child: const Text('Log In'),
+                  ),
+                ],
+              ),
+            );
+          }
 
           return Column(
             children: [
-              // Circle Header
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -177,8 +201,6 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
                   ],
                 ),
               ),
-
-              // Messages List
               Expanded(
                 child:
                     circle.messages.isEmpty
@@ -216,9 +238,7 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
                           itemCount: circle.messages.length,
                           itemBuilder: (context, index) {
                             final message = circle.messages[index];
-                            final isLiked = message.likes.contains(
-                              authProvider.currentUser?.id ?? 'current_user',
-                            );
+                            final isLiked = message.likes.contains(user.id);
                             return Container(
                               margin: const EdgeInsets.only(bottom: 16),
                               padding: const EdgeInsets.all(16),
@@ -281,47 +301,12 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
                                     message.content,
                                     style: const TextStyle(fontSize: 14),
                                   ),
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    children: [
-                                      InkWell(
-                                        onTap:
-                                            () => _toggleLike(
-                                              provider,
-                                              message.id,
-                                              isLiked,
-                                            ),
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              Icons.favorite,
-                                              size: 16,
-                                              color:
-                                                  isLiked
-                                                      ? Colors.red
-                                                      : Colors.grey[400],
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              '${message.likes.length}',
-                                              style: TextStyle(
-                                                color: Colors.grey[600],
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
                                 ],
                               ),
                             );
                           },
                         ),
               ),
-
-              // Message Input
               if (isJoined)
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -350,7 +335,7 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
                       ),
                       const SizedBox(width: 8),
                       IconButton(
-                        onPressed: _sendMessage,
+                        onPressed: () => _sendMessage(provider, authProvider),
                         icon: const Icon(Icons.send, color: Color(0xFFE91E63)),
                       ),
                     ],
@@ -367,45 +352,88 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
     WisdomCircleProvider provider,
     AuthProvider authProvider,
   ) async {
-    final isJoined = provider.joinedCircles.contains(widget.circleId);
-    if (isJoined) {
-      await provider.leaveCircle(
-        circleId: widget.circleId,
-        userId: authProvider.currentUser?.id ?? 'current_user',
+    final user = authProvider.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please log in to join or leave circles'),
+          backgroundColor: Colors.red,
+        ),
       );
-    } else {
-      await provider.joinCircle(
-        circleId: widget.circleId,
-        userId: authProvider.currentUser?.id ?? 'current_user',
+      context.push('/login');
+      return;
+    }
+
+    final isJoined = provider.joinedCircles.contains(widget.circleId);
+    print(
+      'Toggling join status for circle ${widget.circleId}, user ${user.id}, isJoined: $isJoined',
+    );
+    try {
+      if (isJoined) {
+        await provider.leaveCircle(circleId: widget.circleId, userId: user.id);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('👋 Left the circle'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      } else {
+        await provider.joinCircle(circleId: widget.circleId, userId: user.id);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('🎉 Joined the circle!'),
+            backgroundColor: Color(0xFFE91E63),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error toggling join status: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to ${isJoined ? 'leave' : 'join'} circle: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          isJoined ? '👋 Left the circle' : '🎉 Joined the circle!',
-        ),
-        backgroundColor: isJoined ? Colors.orange : const Color(0xFFE91E63),
-      ),
-    );
   }
 
-  Future<void> _sendMessage() async {
+  Future<void> _sendMessage(
+    WisdomCircleProvider provider,
+    AuthProvider authProvider,
+  ) async {
     if (_messageController.text.trim().isEmpty) return;
 
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final circleProvider = Provider.of<WisdomCircleProvider>(
-      context,
-      listen: false,
-    );
+    final user = authProvider.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please log in to send messages'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      context.push('/login');
+      return;
+    }
 
-    final success = circleProvider.sendMessage(
-      circleId: widget.circleId,
-      userId: authProvider.currentUser?.id ?? 'current_user',
-      userName: authProvider.currentUser?.fullName ?? 'You',
-      content: _messageController.text.trim(),
-    );
+    if (!provider.joinedCircles.contains(widget.circleId)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please join the circle to send messages'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
-    if (await success) {
+    print('Sending message for circle ${widget.circleId}, user ${user.id}');
+    try {
+      await provider.sendMessage(
+        circleId: widget.circleId,
+        userId: user.id,
+        userName: user.fullName ?? 'You',
+        userAvatar: user.avatarUrl,
+        content: _messageController.text.trim(),
+      );
       _messageController.clear();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollController.animateTo(
@@ -414,10 +442,11 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
           curve: Curves.easeOut,
         );
       });
-    } else {
+    } catch (e) {
+      print('Error sending message: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to send message'),
+        SnackBar(
+          content: Text('Failed to send message: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -428,14 +457,37 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
     WisdomCircleProvider provider,
     String messageId,
     bool isLiked,
+    String userId,
   ) async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final userId = authProvider.currentUser?.id ?? 'current_user';
-    await provider.toggleLikeMessage(
-      circleId: widget.circleId,
-      messageId: messageId,
-      userId: userId,
+    if (!provider.joinedCircles.contains(widget.circleId)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please join the circle to like messages'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    print(
+      'Toggling like for message $messageId, user $userId, isLiked: $isLiked',
     );
+    try {
+      await provider.toggleLikeMessage(
+        circleId: widget.circleId,
+        messageId: messageId,
+        userId: userId,
+        isLiked: isLiked,
+      );
+    } catch (e) {
+      print('Error toggling like: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to toggle like: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _showCircleOptions() {

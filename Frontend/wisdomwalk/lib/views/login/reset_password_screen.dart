@@ -9,7 +9,7 @@ class ResetPasswordScreen extends StatefulWidget {
   final String otp;
 
   const ResetPasswordScreen({Key? key, required this.email, required this.otp})
-      : super(key: key);
+    : super(key: key);
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -21,6 +21,14 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    debugPrint(
+      'ResetPasswordScreen init: email=${widget.email}, otp=${widget.otp}',
+    );
+  }
 
   @override
   void dispose() {
@@ -41,6 +49,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         return;
       }
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      debugPrint(
+        'ResetPassword: email=${widget.email}, otp=${widget.otp}, newPassword=${_passwordController.text}',
+      );
       final success = await authProvider.resetPassword(
         email: widget.email,
         otp: widget.otp,
@@ -50,16 +61,30 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Password reset successfully'),
+            content: Text('Password reset successfully. Please log in.'),
             backgroundColor: Color(0xFF4A4A4A),
           ),
         );
         context.go('/login');
       } else if (mounted && authProvider.error != null) {
+        debugPrint('ResetPassword error: ${authProvider.error}');
+        String errorMessage = authProvider.error!;
+        if (errorMessage.contains('Invalid or expired code')) {
+          errorMessage =
+              'The verification code is invalid or has expired. Please request a new code.';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(authProvider.error!),
+            content: Text(errorMessage),
             backgroundColor: Theme.of(context).colorScheme.error,
+            action:
+                errorMessage.contains('Invalid or expired code')
+                    ? SnackBarAction(
+                      label: 'Request New Code',
+                      textColor: Colors.white,
+                      onPressed: () => context.go('/forgot-password'),
+                    )
+                    : null,
           ),
         );
       }
@@ -83,7 +108,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           elevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: Color(0xFF757575)),
-            onPressed: () => context.go('/login'),
+            onPressed:
+                () => context.go(
+                  '/otp-verification',
+                  extra: {'email': widget.email},
+                ),
           ),
         ),
         body: SafeArea(

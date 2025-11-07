@@ -31,11 +31,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Password reset link sent to your email'),
+            content: Text('Password reset code sent to your email'),
             backgroundColor: Color(0xFF4A4A4A),
           ),
         );
-        context.go('/login');
+        context.go(
+          '/otp-verification',
+          extra: {'email': _emailController.text.trim()},
+        );
       } else if (mounted && authProvider.error != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -92,7 +95,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Enter your email address and we\'ll send you a link to reset your password.',
+                  'Enter your email address and we\'ll send you a code to reset your password.',
                   style: TextStyle(fontSize: 16, color: Color(0xFF757575)),
                   textAlign: TextAlign.center,
                 ),
@@ -164,7 +167,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           elevation: 0,
         ),
         child: const Text(
-          'Send Reset Link',
+          'Send Reset Code',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
       ),

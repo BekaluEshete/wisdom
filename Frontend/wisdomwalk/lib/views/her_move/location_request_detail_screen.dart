@@ -198,37 +198,37 @@ class _LocationRequestDetailScreenState
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      'Error loading request details: $error',
+                      'offer help functionality coming soon',
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: const Color(0xFF14171A),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Color(0xFF1DA1F2), Color(0xFF0984E3)],
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: ElevatedButton(
-                        onPressed: () {
-                          herMoveProvider.fetchRequestDetails(widget.requestId);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                        ),
-                        child: const Text(
-                          'Retry',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ),
+                    //   const SizedBox(height: 8),
+                    //   Container(
+                    //     decoration: BoxDecoration(
+                    //       gradient: LinearGradient(
+                    //         colors: [Color(0xFF1DA1F2), Color(0xFF0984E3)],
+                    //       ),
+                    //       borderRadius: BorderRadius.circular(20),
+                    //     ),
+                    //     child: ElevatedButton(
+                    //       onPressed: () { 
+                    //         herMoveProvider.fetchRequestDetails(widget.requestId);
+                    //       },
+                    //       style: ElevatedButton.styleFrom(
+                    //         backgroundColor: Colors.transparent,
+                    //         foregroundColor: Colors.white,
+                    //         elevation: 0,
+                    //         shape: RoundedRectangleBorder(
+                    //           borderRadius: BorderRadius.circular(20),
+                    //         ),
+                    //       ),
+                    //       child: const Text(
+                    //         'Retry',
+                    //         style: TextStyle(fontWeight: FontWeight.w600),
+                    //       ),
+                    //     ),
+                    //   ),
                   ],
                 ),
               )
