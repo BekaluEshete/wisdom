@@ -86,6 +86,41 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// Email test endpoint (for debugging - remove in production or add auth)
+app.post("/api/test-email", async (req, res) => {
+  try {
+    const { sendVerificationEmail } = require("./utils/emailService");
+    const { email, firstName, code } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const testCode = code || Math.floor(1000 + Math.random() * 9000).toString();
+    await sendVerificationEmail(email, firstName || "Test User", testCode);
+    
+    res.json({
+      success: true,
+      message: "Test email sent successfully",
+      code: testCode,
+    });
+  } catch (error) {
+    console.error("Test email error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to send test email",
+      error: {
+        message: error.message,
+        code: error.code,
+        response: error.response,
+      },
+    });
+  }
+});
+
 // === Error Handling ===
 app.use((err, req, res, next) => {
   console.error("Server Error:", err.stack);

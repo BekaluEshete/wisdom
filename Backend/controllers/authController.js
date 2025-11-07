@@ -108,7 +108,7 @@ const register = async (req, res) => {
     // Notify admin (don't block registration if this fails)
     try {
       await sendAdminNotificationEmail(
-        'tommr2323@gmail.com',
+        'temesgenmarie97@gmail.com',
         'New User Registration Pending Verification',
         'A new user has registered and is pending admin verification.',
         user
@@ -134,9 +134,14 @@ const register = async (req, res) => {
       },
     };
 
-    // In development, include error details for debugging
-    if (!emailSent && emailErrorDetails && process.env.NODE_ENV === 'development') {
-      response.data.emailError = emailErrorDetails;
+    // Always include error details for debugging (can be removed in production if needed)
+    if (!emailSent && emailErrorDetails) {
+      response.data.emailError = {
+        message: emailErrorDetails.message,
+        code: emailErrorDetails.code,
+        // Only include full response in development
+        response: process.env.NODE_ENV === 'development' ? emailErrorDetails.response : undefined,
+      };
     }
 
     res.status(201).json(response)
