@@ -7,18 +7,31 @@ const GMAIL_PASS = process.env.GMAIL_PASS || "ihes tjso xeff afdz";
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // true for 465, false for other ports
   auth: {
     user: GMAIL_USER,
     pass: GMAIL_PASS,
   },
+  tls: {
+    rejectUnauthorized: false
+  },
+  connectionTimeout: 10000, // 10 seconds
+  greetingTimeout: 10000,
+  socketTimeout: 10000,
 });
 
 // Verify transporter configuration on startup
 transporter.verify(function (error, success) {
   if (error) {
-    console.error('Email transporter verification failed:', error);
+    console.error('❌ Email transporter verification failed:', error);
+    console.error('Error code:', error.code);
+    console.error('Error command:', error.command);
+    console.error('Error response:', error.response);
   } else {
-    console.log('Email transporter is ready to send emails');
+    console.log('✅ Email transporter is ready to send emails');
+    console.log('Gmail user:', GMAIL_USER);
   }
 });
 
@@ -45,19 +58,36 @@ const sendEmail = async (to, subject, html) => {
       to,
       subject,
       html,
+      // Add text version for better compatibility
+      text: html.replace(/<[^>]*>/g, ''), // Strip HTML tags for text version
     };
     
-    console.log(`Attempting to send email to: ${to}, subject: ${subject}`);
+    console.log(`📧 Attempting to send email to: ${to}`);
+    console.log(`   Subject: ${subject}`);
+    console.log(`   From: ${GMAIL_USER}`);
+    
     const info = await transporter.sendMail(mailOptions);
-    console.log(`Email sent successfully to ${to}. MessageId: ${info.messageId}`);
+    console.log(`✅ Email sent successfully to ${to}`);
+    console.log(`   MessageId: ${info.messageId}`);
+    console.log(`   Response: ${info.response}`);
     return info;
   } catch (error) {
-    console.error(`Error sending email to ${to}:`, error);
-    console.error('Error details:', {
-      code: error.code,
-      command: error.command,
-      response: error.response,
-    });
+    console.error(`❌ Error sending email to ${to}:`);
+    console.error(`   Error message: ${error.message}`);
+    console.error(`   Error code: ${error.code}`);
+    console.error(`   Error command: ${error.command}`);
+    console.error(`   Error response: ${error.response}`);
+    console.error(`   Full error:`, JSON.stringify(error, null, 2));
+    
+    // Provide more helpful error messages
+    if (error.code === 'EAUTH') {
+      console.error('   ⚠️  Authentication failed. Check Gmail app password.');
+    } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNECTION') {
+      console.error('   ⚠️  Connection timeout. Check network/firewall settings.');
+    } else if (error.code === 'EENVELOPE') {
+      console.error('   ⚠️  Invalid email address.');
+    }
+    
     throw error;
   }
 };

@@ -86,12 +86,22 @@ const register = async (req, res) => {
 
     // Send email to user
     let emailSent = false;
+    let emailErrorDetails = null;
     try {
+      console.log(`📧 Starting email send process for ${email}...`);
       await sendVerificationEmail(email, firstName, verificationCode);
       emailSent = true;
-      console.log(`Verification email sent successfully to ${email}`);
+      console.log(`✅ Verification email sent successfully to ${email}`);
     } catch (emailError) {
-      console.error(`Failed to send verification email to ${email}:`, emailError);
+      emailErrorDetails = {
+        message: emailError.message,
+        code: emailError.code,
+        response: emailError.response,
+      };
+      console.error(`❌ Failed to send verification email to ${email}:`);
+      console.error(`   Error: ${emailError.message}`);
+      console.error(`   Code: ${emailError.code}`);
+      console.error(`   Response: ${emailError.response}`);
       // Continue with registration even if email fails, but log the error
     }
 
@@ -109,11 +119,12 @@ const register = async (req, res) => {
       // Continue even if admin email fails
     }
 
-    res.status(201).json({
+    // Prepare response
+    const response = {
       success: true,
       message: emailSent 
         ? 'Registration successful! Please check your email to verify your account.'
-        : 'Registration successful! However, we encountered an issue sending the verification email. Please contact support.',
+        : 'Registration successful! However, we encountered an issue sending the verification email. Please use the resend verification feature or contact support.',
       data: {
         userId: user._id,
         email: user.email,
@@ -121,7 +132,14 @@ const register = async (req, res) => {
         adminVerificationPending: true,
         verificationCode, // Include code in response for testing/debugging
       },
-    })
+    };
+
+    // In development, include error details for debugging
+    if (!emailSent && emailErrorDetails && process.env.NODE_ENV === 'development') {
+      response.data.emailError = emailErrorDetails;
+    }
+
+    res.status(201).json(response)
   } catch (error) {
     console.error('Registration error:', error)
     res.status(500).json({
