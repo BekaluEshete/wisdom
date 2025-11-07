@@ -15,7 +15,7 @@ export async function PUT(
 
   try {
     // Verify the backend URL structure with your backend team
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/admin/notifications/${params.id}/read`
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/admin/notifications/${params.id}/read`
 
     console.log('Making request to:', backendUrl) // Debug log
 

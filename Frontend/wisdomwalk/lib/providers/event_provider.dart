@@ -12,7 +12,7 @@ class EventProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
-  final String _baseUrl = 'https://wisdom-walk-app.onrender.com/api/events';
+  final String _baseUrl = 'https://wisdom-walk-app-7of9.onrender.com/api/events';
 
   Future<void> fetchEvents() async {
     _isLoading = true;

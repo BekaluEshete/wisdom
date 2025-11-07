@@ -5,7 +5,7 @@ import 'dart:convert';
 
 class PrayerService {
   static const String apiBaseUrl =
-      'https://wisdom-walk-app.onrender.com/api/posts';
+      'https://wisdom-walk-app-7of9.onrender.com/api/posts';
   final LocalStorageService _localStorageService;
 
   PrayerService({required LocalStorageService localStorageService})

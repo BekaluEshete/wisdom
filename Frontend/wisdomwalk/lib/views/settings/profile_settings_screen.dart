@@ -582,7 +582,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
       final request = http.MultipartRequest(
         'PUT',
         Uri.parse(
-          'https://wisdom-walk-app.onrender.com/api/users/profile/photo',
+          'https://wisdom-walk-app-7of9.onrender.com/api/users/profile/photo',
         ),
       );
       request.headers['Authorization'] = 'Bearer $token';

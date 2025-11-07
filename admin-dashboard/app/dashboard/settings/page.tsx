@@ -58,7 +58,7 @@ const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
   form.append("profilePicture", file)  // <-- changed from "photo" to "profilePicture"
 
   try {
-    const response = await fetch("https://wisdom-walk-app.onrender.com/api/users/profile/photo", {
+    const response = await fetch("https://wisdom-walk-app-7of9.onrender.com/api/users/profile/photo", {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -95,7 +95,7 @@ const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const token = localStorage.getItem("adminToken")
 
     try {
-      const response = await fetch("https://wisdom-walk-app.onrender.com/api/users/profile", {
+      const response = await fetch("https://wisdom-walk-app-7of9.onrender.com/api/users/profile", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -142,7 +142,7 @@ const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const token = localStorage.getItem("adminToken")
 
     try {
-      const response = await fetch("https://wisdom-walk-app.onrender.com/api/auth/change-password", {
+      const response = await fetch("https://wisdom-walk-app-7of9.onrender.com/api/auth/change-password", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

@@ -8,7 +8,7 @@ import 'dart:convert';
 class AuthService {
   final LocalStorageService _localStorageService = LocalStorageService();
 
-  static const String baseUrl = 'https://wisdom-walk-app.onrender.com/api/auth';
+  static const String baseUrl = 'https://wisdom-walk-app-7of9.onrender.com/api/auth';
 
   void _handleError(http.Response response) {
     final body = jsonDecode(response.body);
@@ -237,7 +237,7 @@ class AuthService {
     print('Updating profile with baseUrl: $baseUrl'); // Debug log
     var request = http.MultipartRequest(
       'PUT',
-      Uri.parse('https://wisdom-walk-app.onrender.com/api/users/profile'),
+      Uri.parse('https://wisdom-walk-app-7of9.onrender.com/api/users/profile'),
     );
 
     // Add form fields
@@ -301,7 +301,7 @@ class AuthService {
 
     final response = await http.get(
       Uri.parse(
-        'https://wisdom-walk-app.onrender.com/api/users/profile',
+        'https://wisdom-walk-app-7of9.onrender.com/api/users/profile',
       ), // Correct endpoint
       headers: {
         'Content-Type': 'application/json',

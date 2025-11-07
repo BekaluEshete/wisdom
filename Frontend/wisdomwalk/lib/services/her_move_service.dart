@@ -5,7 +5,7 @@ import 'package:wisdomwalk/services/local_storage_service.dart';
 
 class HerMoveService {
   static const String _baseUrl =
-      'https://wisdom-walk-app.onrender.com/api/movements';
+      'https://wisdom-walk-app-7of9.onrender.com/api/movements';
   final LocalStorageService _storageService = LocalStorageService();
 
   Future<List<LocationRequestModel>> getLocationRequests() async {

@@ -6,7 +6,7 @@ import '../models/message_model.dart';
 
 class ChatService {
   final LocalStorageService _localStorageService = LocalStorageService();
-  static const String baseUrl = 'https://wisdom-walk-app.onrender.com/api';
+  static const String baseUrl = 'https://wisdom-walk-app-7of9.onrender.com/api';
 
   Future<List<Chat>> getUserChats({int page = 1, int limit = 20}) async {
     final token = await _localStorageService.getAuthToken();

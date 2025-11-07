@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server'
 
-const BACKEND_URL = 'https://wisdom-walk-app.onrender.com/api/events'
+const BACKEND_URL = 'https://wisdom-walk-app-7of9.onrender.com/api/events'
 
 export async function GET() {
   try {

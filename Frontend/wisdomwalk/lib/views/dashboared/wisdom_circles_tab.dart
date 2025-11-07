@@ -61,7 +61,7 @@ class _WisdomCirclesTabState extends State<WisdomCirclesTab>
     try {
       final response = await http
           .get(
-            Uri.parse('https://wisdom-walk-app.onrender.com/api/events'),
+            Uri.parse('https://wisdom-walk-app-7of9.onrender.com/api/events'),
             headers: {
               'Content-Type': 'application/json',
               'Authorization':

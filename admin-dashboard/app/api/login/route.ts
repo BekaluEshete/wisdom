@@ -2,12 +2,12 @@ import { type NextRequest, NextResponse } from "next/server"
 
 /**
  * Proxies the admin login request to the WisdomWalk backend.
- * Frontend 👉  POST /api/login  👉  Route Handler 👉  https://wisdom-walk-app.onrender.com/api/auth/login
+ * Frontend 👉  POST /api/login  👉  Route Handler 👉  https://wisdom-walk-app-7of9.onrender.com/api/auth/login
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const backendRes = await fetch("https://wisdom-walk-app.onrender.com/api/auth/login", {
+    const backendRes = await fetch("https://wisdom-walk-app-7of9.onrender.com/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

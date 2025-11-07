@@ -6,7 +6,7 @@
 // import '../../models/user_model.dart';
 
 // class UserService {
-//   static const String baseUrl = 'https://wisdom-walk-app.onrender.com/api';
+//   static const String baseUrl = 'https://wisdom-walk-app-7of9.onrender.com/api';
 //   static final LocalStorageService _localStorageService = LocalStorageService();
 //   static Future<List<UserModel>> searchUsers(String query) async {
 //     try {
@@ -186,7 +186,7 @@ import 'package:wisdomwalk/services/local_storage_service.dart';
 import '../../models/user_model.dart';
 
 class UserService {
-  static const String baseUrl = 'https://wisdom-walk-app.onrender.com/api';
+  static const String baseUrl = 'https://wisdom-walk-app-7of9.onrender.com/api';
   static final LocalStorageService _localStorageService = LocalStorageService();
 
   static Future<List<UserModel>> searchUsers(String query) async {

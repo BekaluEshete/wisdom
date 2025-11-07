@@ -191,7 +191,7 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       final response = await http.put(
-        Uri.parse('https://wisdom-walk-app.onrender.com/api/users/profile'),
+        Uri.parse('https://wisdom-walk-app-7of9.onrender.com/api/users/profile'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization':

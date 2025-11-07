@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 
 /**
  * Proxies GET /api/admin/users?… to
- * https://wisdom-walk-app.onrender.com/api/admin/users?…
+ * https://wisdom-walk-app-7of9.onrender.com/api/admin/users?…
  */
 export async function GET(request: NextRequest) {
   try {
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
       request.headers.get("authorization") ??
       (request.cookies.get("adminToken") ? `Bearer ${request.cookies.get("adminToken")!.value}` : "")
 
-    const backendRes = await fetch(`https://wisdom-walk-app.onrender.com/api/admin/users${qs}`, {
+    const backendRes = await fetch(`https://wisdom-walk-app-7of9.onrender.com/api/admin/users${qs}`, {
       headers: { Authorization: bearer },
       cache: "no-store",
     })

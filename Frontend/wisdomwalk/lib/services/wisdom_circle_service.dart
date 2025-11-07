@@ -7,7 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
 
 class WisdomCircleService {
-  final String _baseUrl = 'https://wisdom-walk-app.onrender.com/api';
+  final String _baseUrl = 'https://wisdom-walk-app-7of9.onrender.com/api';
   final LocalStorageService _localStorageService = LocalStorageService();
   Map<String, dynamic>? _lastResponse; // Store last groups response
 

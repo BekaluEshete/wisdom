@@ -132,7 +132,7 @@ class MessageProvider with ChangeNotifier {
 
   Future<List<Map<String, dynamic>>> _uploadFiles(List<File> files) async {
     final token = await localStorageService.getAuthToken();
-    final uri = Uri.parse('https://wisdom-walk-app.onrender.com/api/upload');
+    final uri = Uri.parse('https://wisdom-walk-app-7of9.onrender.com/api/upload');
     var request = http.MultipartRequest('POST', uri);
     request.headers['Authorization'] = 'Bearer $token';
 

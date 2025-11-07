@@ -7,7 +7,7 @@ export async function GET(
 ) {
   try {
     const token = request.headers.get("Authorization") || ""
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/posts/${params.id}`
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/posts/${params.id}`
 
     const res = await fetch(backendUrl, {
       headers: { Authorization: token },
@@ -31,7 +31,7 @@ export async function DELETE(
 ) {
   try {
     const token = request.headers.get("Authorization") || ""
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/posts/${params.id}`
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/posts/${params.id}`
 
     const res = await fetch(backendUrl, {
       method: "DELETE",
@@ -56,7 +56,7 @@ export async function PUT(
   try {
     const token = request.headers.get("Authorization") || ""
     const body = await request.json()
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/posts/${params.id}`
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/posts/${params.id}`
 
     const res = await fetch(backendUrl, {
       method: "PUT",

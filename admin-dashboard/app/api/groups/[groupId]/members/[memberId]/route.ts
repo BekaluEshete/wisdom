@@ -6,7 +6,7 @@ export async function DELETE(
 ) {
   try {
     const token = request.headers.get("Authorization") || ""
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/groups/${params.groupId}/members/${params.memberId}`
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/groups/${params.groupId}/members/${params.memberId}`
 
     const res = await fetch(backendUrl, {
       method: "DELETE",
@@ -31,7 +31,7 @@ export async function PUT(
   try {
     const token = request.headers.get("Authorization") || ""
     const body = await request.json()
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/groups/${params.groupId}/members/${params.memberId}`
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/groups/${params.groupId}/members/${params.memberId}`
 
     const res = await fetch(backendUrl, {
       method: "PUT",

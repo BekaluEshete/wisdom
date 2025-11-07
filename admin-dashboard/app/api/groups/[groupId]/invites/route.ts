@@ -21,7 +21,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const body = await request.json();
 
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/groups/${groupId}/invites`;
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/groups/${groupId}/invites`;
     const res = await fetch(backendUrl, {
       method: 'POST',
       headers: {

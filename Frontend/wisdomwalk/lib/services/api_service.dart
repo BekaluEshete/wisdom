@@ -7,7 +7,7 @@ import '../../models/chat_model.dart';
 import '../../models/message_model.dart';
 
 class ApiService {
-  static const String baseUrl = 'https://wisdom-walk-app.onrender.com/api';
+  static const String baseUrl = 'https://wisdom-walk-app-7of9.onrender.com/api';
   static const Duration timeoutDuration = Duration(seconds: 30);
 
   final LocalStorageService _localStorageService = LocalStorageService();
@@ -190,7 +190,7 @@ class ApiService {
       }
 
       final url = Uri.parse(
-        'https://wisdom-walk-app.onrender.com/api/chats/$chatId/messages',
+        'https://wisdom-walk-app-7of9.onrender.com/api/chats/$chatId/messages',
       );
 
       debugPrint('Sending message to: $url');

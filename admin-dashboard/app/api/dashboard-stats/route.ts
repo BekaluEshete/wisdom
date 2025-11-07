@@ -2,7 +2,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 
 /**
- * GET /api/dashboard-stats  ⟶  https://wisdom-walk-app.onrender.com/api/admin/dashboard/stats
+ * GET /api/dashboard-stats  ⟶  https://wisdom-walk-app-7of9.onrender.com/api/admin/dashboard/stats
  */
 export async function GET(request: NextRequest) {
   try {
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
       request.headers.get("authorization") ??
       (request.cookies.get("adminToken") ? `Bearer ${request.cookies.get("adminToken")!.value}` : "")
 
-    const backendRes = await fetch("https://wisdom-walk-app.onrender.com/api/admin/dashboard/stats", {
+    const backendRes = await fetch("https://wisdom-walk-app-7of9.onrender.com/api/admin/dashboard/stats", {
       headers: {
         Authorization: bearer,
         "x-auth-token": bearer.replace(/^Bearer\s+/i, ""), // fallback for some middleware

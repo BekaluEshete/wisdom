@@ -44,7 +44,7 @@
 //       return;
 //     }
 
-//     const url = 'https://wisdom-walk-app.onrender.com/api/admin/users';
+//     const url = 'https://wisdom-walk-app-7of9.onrender.com/api/admin/users';
 
 //     try {
 //       final response = await http.get(
@@ -101,7 +101,7 @@
 //     final token = await _localStorageService.getAuthToken();
 //     if (token == null) return false;
 
-//     const url = 'https://wisdom-walk-app.onrender.com/api/admin/users/block';
+//     const url = 'https://wisdom-walk-app-7of9.onrender.com/api/admin/users/block';
 
 //     try {
 //       final response = await http.post(
@@ -242,7 +242,7 @@
 //       return;
 //     }
 
-//     const url = 'https://wisdom-walk-app.onrender.com/api/users/profile';
+//     const url = 'https://wisdom-walk-app-7of9.onrender.com/api/users/profile';
 //     const maxRetries = 3;
 //     int retryCount = 0;
 
@@ -369,7 +369,7 @@
 //       return;
 //     }
 
-//     const url = 'https://wisdom-walk-app.onrender.com/api/admin/users';
+//     const url = 'https://wisdom-walk-app-7of9.onrender.com/api/admin/users';
 
 //     try {
 //       final response = await http.get(
@@ -427,7 +427,7 @@
 //     final token = await _localStorageService.getAuthToken();
 //     if (token == null) return false;
 
-//     const url = 'https://wisdom-walk-app.onrender.com/api/admin/users/block';
+//     const url = 'https://wisdom-walk-app-7of9.onrender.com/api/admin/users/block';
 
 //     try {
 //       final response = await http.post(
@@ -569,7 +569,7 @@ class UserProvider with ChangeNotifier {
       return;
     }
 
-    const url = 'https://wisdom-walk-app.onrender.com/api/users/profile';
+    const url = 'https://wisdom-walk-app-7of9.onrender.com/api/users/profile';
     const maxRetries = 3;
     int retryCount = 0;
 
@@ -709,7 +709,7 @@ class UserProvider with ChangeNotifier {
       return;
     }
 
-    final url = 'https://wisdom-walk-app.onrender.com/api/users/$userId';
+    final url = 'https://wisdom-walk-app-7of9.onrender.com/api/users/$userId';
     const maxRetries = 3;
     int retryCount = 0;
 
@@ -797,7 +797,7 @@ class UserProvider with ChangeNotifier {
       return;
     }
 
-    const url = 'https://wisdom-walk-app.onrender.com/api/admin/users';
+    const url = 'https://wisdom-walk-app-7of9.onrender.com/api/admin/users';
 
     try {
       final response = await http.get(
@@ -855,7 +855,7 @@ class UserProvider with ChangeNotifier {
     final token = await _localStorageService.getAuthToken();
     if (token == null) return false;
 
-    const url = 'https://wisdom-walk-app.onrender.com/api/admin/users/block';
+    const url = 'https://wisdom-walk-app-7of9.onrender.com/api/admin/users/block';
 
     try {
       final response = await http.post(

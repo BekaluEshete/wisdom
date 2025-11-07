@@ -19,7 +19,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/groups/${groupId}/settings`;
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/groups/${groupId}/settings`;
     const res = await fetch(backendUrl, {
       method: 'GET',
       headers: {
@@ -69,7 +69,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const body = await request.json();
 
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/groups/${groupId}/settings`;
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/groups/${groupId}/settings`;
     const res = await fetch(backendUrl, {
       method: 'PATCH',
       headers: {

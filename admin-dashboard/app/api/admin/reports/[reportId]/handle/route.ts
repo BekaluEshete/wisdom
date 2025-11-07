@@ -2,12 +2,12 @@ import { type NextRequest, NextResponse } from "next/server"
 
 /**
  * POST /api/admin/reports/[reportId]/handle
- * Proxies to https://wisdom-walk-app.onrender.com/api/admin/reports/[reportId]/handle
+ * Proxies to https://wisdom-walk-app-7of9.onrender.com/api/admin/reports/[reportId]/handle
  */
 export async function POST(request: NextRequest, { params }: { params: { reportId: string } }) {
   try {
     const body = await request.json()
-    const backendRes = await fetch(`https://wisdom-walk-app.onrender.com/api/admin/reports/${params.reportId}/handle`, {
+    const backendRes = await fetch(`https://wisdom-walk-app-7of9.onrender.com/api/admin/reports/${params.reportId}/handle`, {
       method: "POST",
       headers: {
         Authorization: request.headers.get("authorization") ?? "",

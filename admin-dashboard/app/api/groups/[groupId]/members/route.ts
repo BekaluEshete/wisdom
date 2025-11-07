@@ -12,7 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: { groupId:
       return NextResponse.json({ success: false, message: 'Invalid group ID' }, { status: 400 });
     }
 
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/groups/${groupId}/members`;
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/groups/${groupId}/members`;
     const res = await fetch(backendUrl, {
       method: 'GET',
       headers: {
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest, { params }: { params: { groupId
     }
 
     const body = await request.json();
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/groups/${groupId}/members`;
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/groups/${groupId}/members`;
     const res = await fetch(backendUrl, {
       method: 'POST',
       headers: {

@@ -25,7 +25,7 @@ class SocketService {
     
     _cancelPingTimer();
 
-    _socket = IO.io('https://wisdom-walk-app.onrender.com', <String, dynamic>{
+    _socket = IO.io('https://wisdom-walk-app-7of9.onrender.com', <String, dynamic>{
       'transports': ['websocket'],
       'autoConnect': false,
       'auth': {'token': token}, // Fixed: Move token to auth object

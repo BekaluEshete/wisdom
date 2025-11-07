@@ -5,7 +5,7 @@ import '../models/anonymous_share_model.dart';
 
 class AnonymousShareService {
   static const String _baseUrl =
-      'https://wisdom-walk-app.onrender.com/api/posts'; // Update with your backend URL
+      'https://wisdom-walk-app-7of9.onrender.com/api/posts'; // Update with your backend URL
 
   final LocalStorageService _localStorageService = LocalStorageService();
 

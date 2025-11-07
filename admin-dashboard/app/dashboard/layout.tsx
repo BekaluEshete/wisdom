@@ -108,7 +108,7 @@ export default function DashboardLayout({
   try {
     const token = localStorage.getItem("adminToken")
 
-    const res = await fetch("https://wisdom-walk-app.onrender.com/api/admin/dashboard/stats", {
+    const res = await fetch("https://wisdom-walk-app-7of9.onrender.com/api/admin/dashboard/stats", {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,

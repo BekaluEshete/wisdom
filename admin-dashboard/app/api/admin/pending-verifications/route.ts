@@ -2,12 +2,12 @@ import { type NextRequest, NextResponse } from "next/server"
 
 /**
  * GET /api/admin/pending-verifications
- * Proxies to https://wisdom-walk-app.onrender.com/api/admin/verifications/pending
+ * Proxies to https://wisdom-walk-app-7of9.onrender.com/api/admin/verifications/pending
  */
 export async function GET(request: NextRequest) {
   try {
     const qs = request.nextUrl.search // includes leading "?"
-    const backendRes = await fetch(`https://wisdom-walk-app.onrender.com/api/admin/verifications/pending${qs}`, {
+    const backendRes = await fetch(`https://wisdom-walk-app-7of9.onrender.com/api/admin/verifications/pending${qs}`, {
       headers: { Authorization: request.headers.get("authorization") ?? "" },
       cache: "no-store",
     })

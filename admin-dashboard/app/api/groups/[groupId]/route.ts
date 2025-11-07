@@ -19,7 +19,7 @@ export async function GET(request: NextRequest, { params }: { params: { groupId:
       );
     }
 
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/groups/${groupId}`;
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/groups/${groupId}`;
     console.log('Backend URL:', backendUrl); // Add this log
     const res = await fetch(backendUrl, {
       method: 'GET',
@@ -72,7 +72,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const body = await request.json();
 
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/groups/${groupId}`;
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/groups/${groupId}`;
     const res = await fetch(backendUrl, {
       method: 'PATCH',
       headers: {
@@ -120,7 +120,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       );
     }
 
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/groups/${groupId}`;
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/groups/${groupId}`;
     const res = await fetch(backendUrl, {
       method: 'DELETE',
       headers: {

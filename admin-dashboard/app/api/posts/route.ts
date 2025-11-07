@@ -4,7 +4,7 @@ import { type NextRequest, NextResponse } from "next/server"
 export async function GET(request: NextRequest) {
   try {
     const token = request.headers.get("Authorization") || ""
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/posts/posts`
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/posts/posts`
 
     const res = await fetch(backendUrl, {
       headers: { Authorization: token },

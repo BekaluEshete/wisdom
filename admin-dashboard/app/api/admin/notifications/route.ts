@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const backendUrl = new URL("https://wisdom-walk-app.onrender.com/api/admin/notifications")
+    const backendUrl = new URL("https://wisdom-walk-app-7of9.onrender.com/api/admin/notifications")
     
     // Forward query parameters
     request.nextUrl.searchParams.forEach((value, key) => {

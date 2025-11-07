@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const backendResponse = await fetch(`https://wisdom-walk-app.onrender.com/api/groups`, {
+    const backendResponse = await fetch(`https://wisdom-walk-app-7of9.onrender.com/api/groups`, {
       headers: {
         'Authorization': authHeader,
         'Content-Type': 'application/json'
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     }
 
     // Forward to backend
-    const backendUrl = `https://wisdom-walk-app.onrender.com/api/groups`
+    const backendUrl = `https://wisdom-walk-app-7of9.onrender.com/api/groups`
     const body = await request.json()
     
     const res = await fetch(backendUrl, {
