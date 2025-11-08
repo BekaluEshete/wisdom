@@ -12,8 +12,7 @@ const GMAIL_PASS = process.env.GMAIL_PASS || "cykl seqo wbfe yugb";
 const USE_RESEND = !!RESEND_API_KEY;
 
 // Create transporter with better timeout settings
-// Note: Render may block SMTP connections. If this fails, consider using SendGrid, Mailgun, or Resend
-const createTransporter = (port = 465) => {
+const createTransporter = (port = 587) => {
   return nodemailer.createTransport({
     service: 'gmail',
     host: 'smtp.gmail.com',
@@ -24,22 +23,19 @@ const createTransporter = (port = 465) => {
       pass: GMAIL_PASS,
     },
     tls: {
-      rejectUnauthorized: false
+      rejectUnauthorized: false,
+      ciphers: 'SSLv3'
     },
-    connectionTimeout: 60000, // 60 seconds - increased for cloud platforms
-    greetingTimeout: 30000, // 30 seconds
-    socketTimeout: 60000, // 60 seconds
-    // Add pool configuration for better connection handling
-    pool: true,
-    maxConnections: 1,
-    maxMessages: 3,
+    connectionTimeout: 15000, // 15 seconds - reduced for faster failover
+    greetingTimeout: 10000,   // 10 seconds
+    socketTimeout: 15000,     // 15 seconds
   });
 };
 
-// Try port 465 first (SSL), fallback to 587 (TLS) if needed
-let transporter = createTransporter(465);
+// Try port 587 first (TLS), fallback to 465 (SSL) if needed
+let transporter = createTransporter(587);
 
-// Log email service configuration (non-blocking, doesn't verify connection)
+// Log email service configuration
 if (USE_RESEND) {
   console.log('✅ Email service: Resend API configured');
   console.log('   This is recommended for cloud platforms like Render');
@@ -48,8 +44,6 @@ if (USE_RESEND) {
   console.log('   Note: May have connection issues on Render');
   console.log('   To use Resend API, set RESEND_API_KEY environment variable');
   console.log('   Get free API key at: https://resend.com/api-keys');
-  // Don't verify SMTP connection on startup - it can cause timeouts
-  // Will verify when actually sending emails
 }
 
 const wrapEmail = (title, content) => `
@@ -71,16 +65,27 @@ const wrapEmail = (title, content) => `
 // Send email using Resend API (recommended for cloud platforms)
 const sendEmailViaResend = async (to, subject, html) => {
   const https = require('https');
-  const text = html.replace(/<[^>]*>/g, ''); // Strip HTML tags for text version
   
-  const data = JSON.stringify({
-    from: 'WisdomWalk <onboarding@resend.dev>', // You can verify your domain later
-    to: [to],
-    subject: subject,
+  // Clean the HTML content and ensure it's valid
+  const text = html.replace(/<[^>]*>/g, '').substring(0, 500); // Limit text length
+  
+  const payload = {
+    from: 'WisdomWalk <onboarding@resend.dev>',
+    to: Array.isArray(to) ? to : [to], // Ensure to is an array
+    subject: subject.substring(0, 998), // Limit subject length
     html: html,
     text: text,
-  });
+  };
 
+  // Validate payload before sending
+  try {
+    JSON.stringify(payload);
+  } catch (error) {
+    throw new Error(`Invalid email payload: ${error.message}`);
+  }
+
+  const data = JSON.stringify(payload);
+  
   const options = {
     hostname: 'api.resend.com',
     port: 443,
@@ -89,9 +94,9 @@ const sendEmailViaResend = async (to, subject, html) => {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${RESEND_API_KEY}`,
-      'Content-Length': data.length,
+      'Content-Length': Buffer.byteLength(data),
     },
-    timeout: 30000, // 30 second timeout
+    timeout: 30000,
   };
 
   return new Promise((resolve, reject) => {
@@ -103,32 +108,30 @@ const sendEmailViaResend = async (to, subject, html) => {
       });
 
       res.on('end', () => {
-        try {
-          if (res.statusCode >= 200 && res.statusCode < 300) {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
             const result = JSON.parse(responseData);
             console.log(`✅ Email sent via Resend to ${to}`);
-            console.log(`   Email ID: ${result.id}`);
             resolve(result);
-          } else {
-            let errorMessage = `Resend API error: ${res.statusCode}`;
-            try {
-              const error = JSON.parse(responseData);
-              errorMessage = error.message || errorMessage;
-            } catch (e) {
-              errorMessage = responseData || errorMessage;
-            }
-            reject(new Error(errorMessage));
+          } catch (parseError) {
+            reject(new Error(`Failed to parse Resend response: ${parseError.message}`));
           }
-        } catch (parseError) {
-          console.error('Error parsing Resend response:', parseError);
-          reject(new Error(`Failed to parse Resend response: ${parseError.message}`));
+        } else {
+          let errorMessage = `Resend API error: ${res.statusCode}`;
+          try {
+            const error = JSON.parse(responseData);
+            errorMessage = error.message || errorMessage;
+          } catch (e) {
+            // If we can't parse the error, use the raw response
+            errorMessage = responseData || errorMessage;
+          }
+          reject(new Error(errorMessage));
         }
       });
     });
 
     req.on('error', (error) => {
-      console.error('Resend request error:', error);
-      reject(error);
+      reject(new Error(`Resend request failed: ${error.message}`));
     });
 
     req.on('timeout', () => {
@@ -140,13 +143,13 @@ const sendEmailViaResend = async (to, subject, html) => {
       req.write(data);
       req.end();
     } catch (error) {
-      reject(error);
+      reject(new Error(`Failed to send request: ${error.message}`));
     }
   });
 };
 
 // Send email using Gmail SMTP (fallback)
-const sendEmailViaSMTP = async (to, subject, html, retries = 2) => {
+const sendEmailViaSMTP = async (to, subject, html, retries = 1) => {
   let currentTransporter = transporter;
   let triedPort465 = false;
   let triedPort587 = false;
@@ -171,14 +174,16 @@ const sendEmailViaSMTP = async (to, subject, html, retries = 2) => {
       console.error(`❌ SMTP error (Attempt ${attempt}/${retries + 1}): ${error.code} - ${error.message}`);
       
       if (error.code === 'EAUTH') {
-        throw error;
+        throw new Error(`SMTP authentication failed: ${error.message}`);
       } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNECTION') {
         if (!triedPort587 && currentTransporter.options.port === 465) {
+          console.log('🔄 Switching to port 587 (TLS)');
           currentTransporter = createTransporter(587);
           triedPort587 = true;
           await new Promise(resolve => setTimeout(resolve, 1000));
           continue;
         } else if (!triedPort465 && currentTransporter.options.port === 587) {
+          console.log('🔄 Switching to port 465 (SSL)');
           currentTransporter = createTransporter(465);
           triedPort465 = true;
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -186,16 +191,18 @@ const sendEmailViaSMTP = async (to, subject, html, retries = 2) => {
         }
         
         if (attempt <= retries) {
+          console.log(`🔄 Retrying SMTP in ${2000 * attempt}ms...`);
           await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
           continue;
         }
-        throw error;
+        throw new Error(`SMTP connection failed: ${error.message}`);
       } else {
         if (attempt <= retries) {
+          console.log(`🔄 Retrying SMTP in ${2000 * attempt}ms...`);
           await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
           continue;
         }
-        throw error;
+        throw new Error(`SMTP error: ${error.message}`);
       }
     }
   }
@@ -203,29 +210,35 @@ const sendEmailViaSMTP = async (to, subject, html, retries = 2) => {
 
 // Main sendEmail function - uses Resend if available, otherwise SMTP
 const sendEmail = async (to, subject, html) => {
-  try {
-    if (USE_RESEND) {
-      console.log(`📧 Sending email via Resend API to: ${to}`);
+  let resendError = null;
+  let smtpError = null;
+
+  // Try Resend first
+  if (USE_RESEND) {
+    try {
+      console.log(`📧 Attempting Resend API to: ${to}`);
       console.log(`   Subject: ${subject}`);
       return await sendEmailViaResend(to, subject, html);
-    } else {
-      console.log(`📧 Sending email via Gmail SMTP to: ${to}`);
-      console.log(`   Subject: ${subject}`);
-      console.log(`   ⚠️  Note: Using SMTP. For better reliability on Render, set RESEND_API_KEY`);
-      return await sendEmailViaSMTP(to, subject, html);
+    } catch (error) {
+      resendError = error;
+      console.error(`❌ Resend failed: ${error.message}`);
     }
-  } catch (error) {
-    // If Resend fails and we have SMTP as backup, try SMTP
-    if (USE_RESEND && !error.message.includes('Resend')) {
-      console.error(`❌ Resend failed, trying SMTP fallback...`);
-      try {
-        return await sendEmailViaSMTP(to, subject, html);
-      } catch (smtpError) {
-        throw new Error(`Both Resend and SMTP failed. Resend: ${error.message}, SMTP: ${smtpError.message}`);
-      }
-    }
-    throw error;
   }
+
+  // Try SMTP as fallback
+  try {
+    console.log(`📧 Attempting SMTP to: ${to}`);
+    console.log(`   Subject: ${subject}`);
+    console.log(`   ⚠️  Note: Using SMTP. For better reliability on Render, set RESEND_API_KEY`);
+    return await sendEmailViaSMTP(to, subject, html, 1);
+  } catch (error) {
+    smtpError = error;
+    console.error(`❌ SMTP failed: ${error.message}`);
+  }
+
+  // Both failed
+  const errorMessage = `Both email services failed. Resend: ${resendError?.message}, SMTP: ${smtpError?.message}`;
+  throw new Error(errorMessage);
 };
 
 const sendVerificationEmail = async (email, firstName, code) => {
@@ -308,7 +321,7 @@ const sendUnblockedEmailToUser = async (userEmail, firstName) => {
     <p>Your account has been unblocked and is now active.</p>
     <p>Welcome back to WisdomWalk 🌼</p>
   `;
-  await sendEmail(userEmail, '✅ Account Unblocked - WisdomWalk', wrapEmail('You’re Back Online!', content));
+  await sendEmail(userEmail, '✅ Account Unblocked - WisdomWalk', wrapEmail('You re Back Online!', content));
 };
 
 const sendBannedEmailToUser = async (userEmail, reason, firstName) => {
