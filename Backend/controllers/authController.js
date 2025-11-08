@@ -55,7 +55,7 @@ const register = async (req, res) => {
     )
 
     // Generate email verification code (4-digit code)
-    const verificationCode = Math.floor(1000 + Math.random() * 9000).toString()
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString()
     const emailVerificationExpires = new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
     
     console.log(`Generated verification code for ${email}: ${verificationCode}`)
@@ -410,7 +410,7 @@ const resendVerificationEmail = async (req, res) => {
       });
     }
 
-    const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
     const emailVerificationExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
     console.log(`Resending verification code to ${email}: ${verificationCode}`);
