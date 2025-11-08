@@ -1,41 +1,37 @@
 require('dotenv').config();
 const nodemailer = require('nodemailer');
 
-// === CONFIG: READ FROM RENDER ENV (NO FALLBACKS) ===
+// === FORCE USE SMTP_USER / SMTP_PASS FROM RENDER ===
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASS;
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
 const SMTP_PORT = Number(process.env.SMTP_PORT) || 587;
 
-// === FORCE OFF RESEND (NO DOMAIN YET) ===
+// === DISABLE RESEND ===
 const USE_RESEND = false;
 
-// === CREATE GMAIL TRANSPORTER (PORT 587 ONLY) ===
+// === VALIDATE CREDENTIALS ===
+if (!SMTP_USER || !SMTP_PASS) {
+  console.error('SMTP_USER or SMTP_PASS is missing! Email will NOT send.');
+  console.error('Set in Render: SMTP_USER, SMTP_PASS, SMTP_HOST, SMTP_PORT');
+}
+
+// === CREATE TRANSPORTER ===
 const createTransporter = () => {
-  return nodemailer.createTransport({
+  return nodemailer.createTransporter({
     host: SMTP_HOST,
     port: SMTP_PORT,
-    secure: false, // TLS
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS,
-    },
+    secure: false,
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
     tls: { rejectUnauthorized: false },
     connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 10000,
   });
 };
 
 let transporter = createTransporter();
 
-// === LOG CONFIG ON STARTUP ===
 console.log('Email service: Gmail SMTP (Port 587)');
-if (!SMTP_USER || !SMTP_PASS) {
-  console.error('SMTP_USER or SMTP_PASS missing in environment!');
-} else {
-  console.log(`SMTP configured: ${SMTP_USER}`);
-}
+console.log(`Using: ${SMTP_USER}`);
 
 // === HTML EMAIL WRAPPER ===
 const wrapEmail = (title, content) => `
