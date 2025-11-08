@@ -39,24 +39,18 @@ const createTransporter = (port = 465) => {
 // Try port 465 first (SSL), fallback to 587 (TLS) if needed
 let transporter = createTransporter(465);
 
-// Verify email service configuration on startup
-(async () => {
-  if (USE_RESEND) {
-    console.log('✅ Using Resend API for email sending');
-    console.log('   This is recommended for cloud platforms like Render');
-  } else {
-    console.log('⚠️  Using Gmail SMTP (may have connection issues on Render)');
-    console.log('   To use Resend API, set RESEND_API_KEY environment variable');
-    console.log('   Get free API key at: https://resend.com/api-keys');
-    try {
-      await transporter.verify();
-      console.log('✅ Gmail SMTP transporter verified (port 465)');
-    } catch (error) {
-      console.error('❌ Gmail SMTP verification failed:', error.code);
-      console.error('   Will try both ports when sending emails...');
-    }
-  }
-})();
+// Log email service configuration (non-blocking, doesn't verify connection)
+if (USE_RESEND) {
+  console.log('✅ Email service: Resend API configured');
+  console.log('   This is recommended for cloud platforms like Render');
+} else {
+  console.log('⚠️  Email service: Gmail SMTP configured');
+  console.log('   Note: May have connection issues on Render');
+  console.log('   To use Resend API, set RESEND_API_KEY environment variable');
+  console.log('   Get free API key at: https://resend.com/api-keys');
+  // Don't verify SMTP connection on startup - it can cause timeouts
+  // Will verify when actually sending emails
+}
 
 const wrapEmail = (title, content) => `
   <div style="font-family: 'Segoe UI', sans-serif; background-color: #fdf9f4; padding: 40px 20px; border-radius: 12px; max-width: 600px; margin: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
@@ -97,6 +91,7 @@ const sendEmailViaResend = async (to, subject, html) => {
       'Authorization': `Bearer ${RESEND_API_KEY}`,
       'Content-Length': data.length,
     },
+    timeout: 30000, // 30 second timeout
   };
 
   return new Promise((resolve, reject) => {
@@ -108,24 +103,45 @@ const sendEmailViaResend = async (to, subject, html) => {
       });
 
       res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          const result = JSON.parse(responseData);
-          console.log(`✅ Email sent via Resend to ${to}`);
-          console.log(`   Email ID: ${result.id}`);
-          resolve(result);
-        } else {
-          const error = JSON.parse(responseData);
-          reject(new Error(error.message || `Resend API error: ${res.statusCode}`));
+        try {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            const result = JSON.parse(responseData);
+            console.log(`✅ Email sent via Resend to ${to}`);
+            console.log(`   Email ID: ${result.id}`);
+            resolve(result);
+          } else {
+            let errorMessage = `Resend API error: ${res.statusCode}`;
+            try {
+              const error = JSON.parse(responseData);
+              errorMessage = error.message || errorMessage;
+            } catch (e) {
+              errorMessage = responseData || errorMessage;
+            }
+            reject(new Error(errorMessage));
+          }
+        } catch (parseError) {
+          console.error('Error parsing Resend response:', parseError);
+          reject(new Error(`Failed to parse Resend response: ${parseError.message}`));
         }
       });
     });
 
     req.on('error', (error) => {
+      console.error('Resend request error:', error);
       reject(error);
     });
 
-    req.write(data);
-    req.end();
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Resend API request timeout'));
+    });
+
+    try {
+      req.write(data);
+      req.end();
+    } catch (error) {
+      reject(error);
+    }
   });
 };
 
