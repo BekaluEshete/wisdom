@@ -1,9 +1,15 @@
 require('dotenv').config();
 const nodemailer = require('nodemailer');
 
-// Gmail configuration
+// Email service configuration
+// Using Resend API (recommended for cloud platforms like Render)
+// Fallback to Gmail SMTP if Resend is not configured
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const GMAIL_USER = process.env.GMAIL_USER || "temesgenmarie97@gmail.com";
 const GMAIL_PASS = process.env.GMAIL_PASS || "cykl seqo wbfe yugb";
+
+// Use Resend if API key is available, otherwise use Gmail SMTP
+const USE_RESEND = !!RESEND_API_KEY;
 
 // Create transporter with better timeout settings
 // Note: Render may block SMTP connections. If this fails, consider using SendGrid, Mailgun, or Resend
@@ -33,16 +39,22 @@ const createTransporter = (port = 465) => {
 // Try port 465 first (SSL), fallback to 587 (TLS) if needed
 let transporter = createTransporter(465);
 
-// Verify transporter configuration on startup (async)
+// Verify email service configuration on startup
 (async () => {
-  try {
-    await transporter.verify();
-    console.log('✅ Email transporter is ready to send emails (port 465)');
-    console.log('Gmail user:', GMAIL_USER);
-  } catch (error) {
-    console.error('❌ Email transporter verification failed on port 465:', error.code);
-    console.error('Will try port 587 when sending emails...');
-    // Don't fail startup if verification fails - will try both ports when sending
+  if (USE_RESEND) {
+    console.log('✅ Using Resend API for email sending');
+    console.log('   This is recommended for cloud platforms like Render');
+  } else {
+    console.log('⚠️  Using Gmail SMTP (may have connection issues on Render)');
+    console.log('   To use Resend API, set RESEND_API_KEY environment variable');
+    console.log('   Get free API key at: https://resend.com/api-keys');
+    try {
+      await transporter.verify();
+      console.log('✅ Gmail SMTP transporter verified (port 465)');
+    } catch (error) {
+      console.error('❌ Gmail SMTP verification failed:', error.code);
+      console.error('   Will try both ports when sending emails...');
+    }
   }
 })();
 
@@ -62,7 +74,63 @@ const wrapEmail = (title, content) => `
   </div>
 `;
 
-const sendEmail = async (to, subject, html, retries = 2) => {
+// Send email using Resend API (recommended for cloud platforms)
+const sendEmailViaResend = async (to, subject, html) => {
+  const https = require('https');
+  const text = html.replace(/<[^>]*>/g, ''); // Strip HTML tags for text version
+  
+  const data = JSON.stringify({
+    from: 'WisdomWalk <onboarding@resend.dev>', // You can verify your domain later
+    to: [to],
+    subject: subject,
+    html: html,
+    text: text,
+  });
+
+  const options = {
+    hostname: 'api.resend.com',
+    port: 443,
+    path: '/emails',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${RESEND_API_KEY}`,
+      'Content-Length': data.length,
+    },
+  };
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      let responseData = '';
+
+      res.on('data', (chunk) => {
+        responseData += chunk;
+      });
+
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          const result = JSON.parse(responseData);
+          console.log(`✅ Email sent via Resend to ${to}`);
+          console.log(`   Email ID: ${result.id}`);
+          resolve(result);
+        } else {
+          const error = JSON.parse(responseData);
+          reject(new Error(error.message || `Resend API error: ${res.statusCode}`));
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      reject(error);
+    });
+
+    req.write(data);
+    req.end();
+  });
+};
+
+// Send email using Gmail SMTP (fallback)
+const sendEmailViaSMTP = async (to, subject, html, retries = 2) => {
   let currentTransporter = transporter;
   let triedPort465 = false;
   let triedPort587 = false;
@@ -74,64 +142,39 @@ const sendEmail = async (to, subject, html, retries = 2) => {
         to,
         subject,
         html,
-        // Add text version for better compatibility
-        text: html.replace(/<[^>]*>/g, ''), // Strip HTML tags for text version
+        text: html.replace(/<[^>]*>/g, ''),
       };
       
-      console.log(`📧 Attempting to send email to: ${to} (Attempt ${attempt}/${retries + 1})`);
-      console.log(`   Subject: ${subject}`);
-      console.log(`   From: ${GMAIL_USER}`);
+      console.log(`📧 Attempting to send email via SMTP to: ${to} (Attempt ${attempt}/${retries + 1})`);
       console.log(`   Using port: ${currentTransporter.options.port}`);
       
       const info = await currentTransporter.sendMail(mailOptions);
-      console.log(`✅ Email sent successfully to ${to}`);
-      console.log(`   MessageId: ${info.messageId}`);
-      console.log(`   Response: ${info.response}`);
+      console.log(`✅ Email sent successfully via SMTP to ${to}`);
       return info;
     } catch (error) {
-      console.error(`❌ Error sending email to ${to} (Attempt ${attempt}/${retries + 1}):`);
-      console.error(`   Error message: ${error.message}`);
-      console.error(`   Error code: ${error.code}`);
-      console.error(`   Error command: ${error.command}`);
-      console.error(`   Error response: ${error.response}`);
+      console.error(`❌ SMTP error (Attempt ${attempt}/${retries + 1}): ${error.code} - ${error.message}`);
       
-      // Provide more helpful error messages
       if (error.code === 'EAUTH') {
-        console.error('   ⚠️  Authentication failed. Check Gmail app password.');
-        throw error; // Don't retry auth errors
+        throw error;
       } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNECTION') {
-        // Try switching ports if we haven't tried both
         if (!triedPort587 && currentTransporter.options.port === 465) {
-          console.error('   ⚠️  Connection timeout on port 465. Trying port 587...');
-          triedPort465 = true;
           currentTransporter = createTransporter(587);
           triedPort587 = true;
           await new Promise(resolve => setTimeout(resolve, 1000));
-          continue; // Retry with different port
+          continue;
         } else if (!triedPort465 && currentTransporter.options.port === 587) {
-          console.error('   ⚠️  Connection timeout on port 587. Trying port 465...');
-          triedPort587 = true;
           currentTransporter = createTransporter(465);
           triedPort465 = true;
           await new Promise(resolve => setTimeout(resolve, 1000));
-          continue; // Retry with different port
+          continue;
         }
         
-        console.error('   ⚠️  Connection timeout on both ports. Retrying...');
         if (attempt <= retries) {
-          // Wait before retrying (exponential backoff)
           await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
-          continue; // Retry
-        } else {
-          console.error('   ❌ All retry attempts failed. Connection timeout persists.');
-          console.error('   💡 TIP: Render may block SMTP connections. Consider using SendGrid, Mailgun, or Resend.');
-          throw error;
+          continue;
         }
-      } else if (error.code === 'EENVELOPE') {
-        console.error('   ⚠️  Invalid email address.');
-        throw error; // Don't retry invalid email errors
+        throw error;
       } else {
-        // For other errors, retry once
         if (attempt <= retries) {
           await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
           continue;
@@ -139,6 +182,33 @@ const sendEmail = async (to, subject, html, retries = 2) => {
         throw error;
       }
     }
+  }
+};
+
+// Main sendEmail function - uses Resend if available, otherwise SMTP
+const sendEmail = async (to, subject, html) => {
+  try {
+    if (USE_RESEND) {
+      console.log(`📧 Sending email via Resend API to: ${to}`);
+      console.log(`   Subject: ${subject}`);
+      return await sendEmailViaResend(to, subject, html);
+    } else {
+      console.log(`📧 Sending email via Gmail SMTP to: ${to}`);
+      console.log(`   Subject: ${subject}`);
+      console.log(`   ⚠️  Note: Using SMTP. For better reliability on Render, set RESEND_API_KEY`);
+      return await sendEmailViaSMTP(to, subject, html);
+    }
+  } catch (error) {
+    // If Resend fails and we have SMTP as backup, try SMTP
+    if (USE_RESEND && !error.message.includes('Resend')) {
+      console.error(`❌ Resend failed, trying SMTP fallback...`);
+      try {
+        return await sendEmailViaSMTP(to, subject, html);
+      } catch (smtpError) {
+        throw new Error(`Both Resend and SMTP failed. Resend: ${error.message}, SMTP: ${smtpError.message}`);
+      }
+    }
+    throw error;
   }
 };
 
