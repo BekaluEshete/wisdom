@@ -1,4 +1,3 @@
-
 require('dotenv').config();
 const nodemailer = require('nodemailer');
 
@@ -153,3 +152,4 @@ module.exports = {
   sendLikeNotificationEmail,
   sendCommentNotificationEmail,
 };
+
