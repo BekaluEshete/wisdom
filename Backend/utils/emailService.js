@@ -1,39 +1,10 @@
 require('dotenv').config();
-const nodemailer = require('nodemailer');
 const { Resend } = require('resend');
 
-// Initialize Resend
+// Initialize Resend - FORCE RESEND ON RENDER
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Email service configuration
-const EMAIL_SERVICE = process.env.EMAIL_SERVICE || 'gmail'; // 'gmail', 'resend', or 'sendgrid'
-
-// Create transporter with enhanced configuration
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.GMAIL_USER || "temesgenmarie97@gmail.com",
-    pass: process.env.GMAIL_APP_PASSWORD || "cykl seqo wbfe yugb",
-  },
-  tls: {
-    rejectUnauthorized: false
-  },
-  // Add timeouts for better handling
-  connectionTimeout: 30000,
-  greetingTimeout: 30000,
-  socketTimeout: 30000,
-});
-
-// Verify transporter connection
-transporter.verify(function (error, success) {
-  if (error) {
-    console.error('❌ SMTP Connection Failed:', error);
-  } else {
-    console.log('✅ SMTP Server is ready to take messages');
-  }
-});
+console.log('🔧 Email Service: Using RESEND (Gmail timeout on Render)');
 
 const wrapEmail = (title, content) => `
 <!DOCTYPE html>
@@ -57,9 +28,10 @@ const wrapEmail = (title, content) => `
     <div style="font-size: 14px; color: #777; text-align: center;">
       <p>"She is clothed with strength and dignity, and she laughs without fear of the future."<br><strong>– Proverbs 31:25</strong></p>
       <p>Blessings,<br><strong>The WisdomWalk Team</strong></p>
+      <!-- Add unsubscribe link for better reputation -->
       <p style="font-size: 12px; color: #999; margin-top: 20px;">
-        <a href="${process.env.FRONTEND_URL || 'https://yourdomain.com'}/unsubscribe" style="color: #999;">Unsubscribe</a> | 
-        <a href="${process.env.FRONTEND_URL || 'https://yourdomain.com'}/privacy" style="color: #999;">Privacy Policy</a>
+        <a href="https://yourdomain.com/unsubscribe" style="color: #999;">Unsubscribe</a> | 
+        <a href="https://yourdomain.com/privacy" style="color: #999;">Privacy Policy</a>
       </p>
     </div>
   </div>
@@ -67,98 +39,16 @@ const wrapEmail = (title, content) => `
 </html>
 `;
 
-// Enhanced email sending with multiple service support
+// SIMPLIFIED - Only use Resend (no Gmail fallback)
 const sendEmail = async (to, subject, html) => {
-  console.log(`📧 Attempting to send email to: ${to}`);
-  console.log(`🔧 Using email service: ${EMAIL_SERVICE}`);
+  console.log(`📧 Sending email to: ${to}`);
   
-  try {
-    // Try Resend first if configured
-    if (EMAIL_SERVICE === 'resend' && process.env.RESEND_API_KEY) {
-      console.log('🔄 Trying Resend email service...');
-      return await sendEmailWithResend(to, subject, html);
-    }
-    
-    // Fallback to Gmail
-    console.log('🔄 Using Gmail SMTP service...');
-    return await sendEmailWithGmail(to, subject, html);
-    
-  } catch (primaryError) {
-    console.error('❌ Primary email service failed:', primaryError.message);
-    
-    // Fallback mechanism
-    try {
-      if (EMAIL_SERVICE !== 'resend' && process.env.RESEND_API_KEY) {
-        console.log('🔄 Falling back to Resend...');
-        return await sendEmailWithResend(to, subject, html);
-      }
-    } catch (fallbackError) {
-      console.error('❌ All email services failed:', fallbackError.message);
-      throw new Error(`Email delivery failed: ${primaryError.message}`);
-    }
-    
-    throw primaryError;
-  }
-};
-
-// Gmail SMTP sender
-const sendEmailWithGmail = async (to, subject, html) => {
-  try {
-    console.log('🔧 Gmail Configuration Check:');
-    console.log('   User:', process.env.GMAIL_USER || "temesgenmarie97@gmail.com");
-    console.log('   Has Password:', !!process.env.GMAIL_APP_PASSWORD);
-    
-    const mailOptions = {
-      from: {
-        name: "WisdomWalk",
-        address: process.env.GMAIL_USER || "temesgenmarie97@gmail.com"
-      },
-      to: to,
-      subject: subject,
-      html: html,
-      text: html.replace(/<[^>]*>/g, ''),
-      headers: {
-        'X-Priority': '1',
-        'X-MSMail-Priority': 'High',
-        'Importance': 'high',
-        'X-Mailer': 'WisdomWalk App'
-      }
-    };
-
-    console.log('📤 Sending email via Gmail SMTP...');
-    const info = await transporter.sendMail(mailOptions);
-    
-    console.log('✅ Gmail email sent successfully!');
-    console.log('   Message ID:', info.messageId);
-    console.log('   Response:', info.response);
-    
-    return info;
-  } catch (error) {
-    console.error('❌ Gmail SMTP Error Details:');
-    console.error('   Error Code:', error.code);
-    console.error('   Command:', error.command);
-    console.error('   Response Code:', error.responseCode);
-    console.error('   Response:', error.response);
-    
-    // Specific error handling
-    if (error.code === 'EAUTH') {
-      throw new Error('Gmail authentication failed. Check your app password and 2FA settings.');
-    } else if (error.code === 'ECONNECTION') {
-      throw new Error('Cannot connect to Gmail SMTP server. Check network and firewall settings.');
-    }
-    
-    throw error;
-  }
-};
-
-// Resend email sender
-const sendEmailWithResend = async (to, subject, html) => {
   try {
     if (!process.env.RESEND_API_KEY) {
       throw new Error('RESEND_API_KEY is not configured');
     }
 
-    console.log('📤 Sending email via Resend...');
+    console.log('🔄 Using Resend email service...');
     
     const { data, error } = await resend.emails.send({
       from: 'WisdomWalk <onboarding@resend.dev>',
@@ -169,27 +59,21 @@ const sendEmailWithResend = async (to, subject, html) => {
 
     if (error) {
       console.error('❌ Resend API Error:', error);
-      throw new Error(`Resend failed: ${error.message}`);
+      throw new Error(`Email failed: ${error.message}`);
     }
 
-    console.log('✅ Resend email sent successfully!');
+    console.log('✅ Email sent successfully via Resend!');
     console.log('   Email ID:', data.id);
     
     return data;
   } catch (error) {
-    console.error('❌ Resend Error Details:');
-    console.error('   Message:', error.message);
+    console.error('❌ Email Error:', error.message);
     throw error;
   }
 };
 
-// Enhanced email functions with better logging
 const sendVerificationEmail = async (email, firstName, code) => {
-  console.log(`🎯 SEND VERIFICATION EMAIL:`);
-  console.log(`   To: ${email}`);
-  console.log(`   Name: ${firstName}`);
-  console.log(`   Code: ${code}`);
-  console.log(`   Code Length: ${code.length}`);
+  console.log(`🎯 Sending verification to ${email}, code: ${code}`);
   
   try {
     const content = `
@@ -210,14 +94,13 @@ const sendVerificationEmail = async (email, firstName, code) => {
     console.log('✅ Verification email sent successfully!');
     return result;
   } catch (error) {
-    console.error('❌ Failed to send verification email:');
-    console.error('   Error:', error.message);
+    console.error('❌ Failed to send verification email:', error.message);
     throw error;
   }
 };
 
 const sendPasswordResetEmail = async (email, code, firstName) => {
-  console.log(`🎯 SEND PASSWORD RESET EMAIL to ${email}`);
+  console.log(`🎯 Sending password reset to ${email}`);
   
   try {
     const content = `
@@ -244,8 +127,6 @@ const sendPasswordResetEmail = async (email, code, firstName) => {
 };
 
 const sendAdminNotificationEmail = async (adminEmail, subject, message, user) => {
-  console.log(`🎯 SEND ADMIN NOTIFICATION to ${adminEmail}`);
-  
   try {
     const content = `
       <p>${message}</p>
@@ -449,6 +330,5 @@ module.exports = {
   sendBannedEmailToUser,
   sendLikeNotificationEmail,
   sendCommentNotificationEmail,
-  testEmailService,
-  sendEmail // Export main sendEmail for direct use
+  testEmailService
 };
