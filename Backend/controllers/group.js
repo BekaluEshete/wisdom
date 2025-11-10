@@ -1033,24 +1033,56 @@ const sendMessage = async (req, res) => {
     await chat.save();
 
     // Populate message with sender and reply info
-    await message.populate("sender", "firstName lastName avatar");
+    await message.populate("sender", "firstName lastName profilePicture avatar");
     if (message.replyTo) {
       await message.populate({
         path: "replyTo",
-        populate: { path: "sender", select: "firstName lastName avatar" }
+        populate: { path: "sender", select: "firstName lastName profilePicture avatar" }
       });
     }
+    
+    // Convert message to JSON format expected by frontend
+    const messageObj = message.toObject();
+    
+    // Format message for frontend (WisdomCircleMessage format)
+    const formattedMessage = {
+      _id: messageObj._id,
+      id: messageObj._id,
+      sender: messageObj.sender ? {
+        _id: messageObj.sender._id,
+        firstName: messageObj.sender.firstName,
+        lastName: messageObj.sender.lastName,
+        avatar: messageObj.sender.profilePicture || messageObj.sender.avatar,
+        profilePicture: messageObj.sender.profilePicture || messageObj.sender.avatar,
+      } : null,
+      userId: messageObj.sender?._id?.toString() || messageObj.sender?.toString(),
+      userName: messageObj.sender 
+        ? `${messageObj.sender.firstName || ''} ${messageObj.sender.lastName || ''}`.trim()
+        : 'Unknown User',
+      userAvatar: messageObj.sender?.profilePicture || messageObj.sender?.avatar || null,
+      content: messageObj.content || '',
+      createdAt: messageObj.createdAt || new Date(),
+      likes: (messageObj.reactions && Array.isArray(messageObj.reactions))
+        ? messageObj.reactions.map(r => {
+            if (typeof r === 'object' && r.user) {
+              return r.user.toString();
+            }
+            return r.toString();
+          }).filter(Boolean)
+        : [],
+      reactions: messageObj.reactions || [],
+    };
     
     const io = req.app.get("io");
     if (io) {
       // Emit new message to all participants in the chat room
-      io.to(chat._id.toString()).emit("newMessage", message);
+      io.to(chat._id.toString()).emit("newMessage", formattedMessage);
     }
 
     res.status(201).json({ 
       success: true,
       message: "Message sent successfully",
-      data: message
+      data: formattedMessage
     });
   } catch (error) {
     console.error("Error sending message:", error);

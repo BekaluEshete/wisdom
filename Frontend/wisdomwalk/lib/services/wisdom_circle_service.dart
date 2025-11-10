@@ -341,11 +341,13 @@ class WisdomCircleService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = json.decode(response.body);
-        if (data['success'] == true && data['message'] != null) {
+        if (data['success'] == true && data['data'] != null) {
           print('✅ Sent message to circle $circleId');
           print('📨 Message content: $content');
+          print('📨 Response data: ${data['data']}');
 
-          return WisdomCircleMessage.fromJson(data['message']);
+          // The backend returns the message object in data['data']
+          return WisdomCircleMessage.fromJson(data['data']);
         } else {
           throw Exception(
             'Failed to send message: ${data['message'] ?? 'Invalid response'}',

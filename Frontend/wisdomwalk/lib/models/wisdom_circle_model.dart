@@ -226,7 +226,8 @@ class WisdomCircleMessage {
       userAvatar:
           json['userAvatar']?.toString() ??
           (json['sender'] is Map<String, dynamic>
-              ? json['sender']['avatar']?.toString()
+              ? (json['sender']['profilePicture']?.toString() ?? 
+                 json['sender']['avatar']?.toString())
               : null),
       content: json['content']?.toString() ?? '',
       createdAt:
