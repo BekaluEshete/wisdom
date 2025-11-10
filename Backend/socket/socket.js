@@ -29,11 +29,38 @@ module.exports = (io) => {
     console.log(`[Socket] User connected: ${socket.user._id}`)
     connectedUsers.set(socket.user._id.toString(), socket.id)
     
-    // Update user online status
+    // Update user online status and broadcast to all their chat partners
     User.findByIdAndUpdate(socket.user._id, { 
       isOnline: true,
       lastActive: new Date()
-    }).catch(err => console.error('Error updating user status:', err))
+    }).then(async () => {
+      // Broadcast online status to all users who have direct chats with this user
+      const userChats = await Chat.find({
+        type: "direct",
+        participants: socket.user._id,
+        isActive: true
+      }).select('participants').lean()
+      
+      // Get all unique chat partner IDs
+      const chatPartnerIds = new Set()
+      userChats.forEach(chat => {
+        chat.participants.forEach(participantId => {
+          const pid = participantId.toString()
+          if (pid !== socket.user._id.toString()) {
+            chatPartnerIds.add(pid)
+          }
+        })
+      })
+      
+      // Emit online status to all chat partners
+      chatPartnerIds.forEach(partnerId => {
+        io.to(connectedUsers.get(partnerId) || '').emit('userOnlineStatus', {
+          userId: socket.user._id.toString(),
+          isOnline: true,
+          lastActive: new Date()
+        })
+      })
+    }).catch(err => console.error('[Socket] Error updating user status:', err))
 
     // Join user to all their DIRECT chats only (not group/circle chats)
     // Circles have their own messaging system
@@ -370,16 +397,70 @@ module.exports = (io) => {
     })
 
     // Handle disconnection
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
       console.log(`[Socket] User disconnected: ${socket.user._id}`)
+      
+      // Clear the lastActive interval if it exists
+      if (socket.lastActiveInterval) {
+        clearInterval(socket.lastActiveInterval)
+      }
+      
       connectedUsers.delete(socket.user._id.toString())
       
       // Update user offline status
-      User.findByIdAndUpdate(socket.user._id, { 
+      await User.findByIdAndUpdate(socket.user._id, { 
         isOnline: false,
         lastActive: new Date()
-      }).catch(err => console.error('Error updating user status:', err))
+      }).catch(err => console.error('[Socket] Error updating user status:', err))
+      
+      // Broadcast offline status to all users who have direct chats with this user
+      try {
+        const userChats = await Chat.find({
+          type: "direct",
+          participants: socket.user._id,
+          isActive: true
+        }).select('participants').lean()
+        
+        // Get all unique chat partner IDs
+        const chatPartnerIds = new Set()
+        userChats.forEach(chat => {
+          chat.participants.forEach(participantId => {
+            const pid = participantId.toString()
+            if (pid !== socket.user._id.toString()) {
+              chatPartnerIds.add(pid)
+            }
+          })
+        })
+        
+        // Emit offline status to all chat partners
+        chatPartnerIds.forEach(partnerId => {
+          const partnerSocketId = connectedUsers.get(partnerId)
+          if (partnerSocketId) {
+            io.to(partnerSocketId).emit('userOnlineStatus', {
+              userId: socket.user._id.toString(),
+              isOnline: false,
+              lastActive: new Date()
+            })
+          }
+        })
+      } catch (err) {
+        console.error('[Socket] Error broadcasting offline status:', err)
+      }
     })
+    
+    // Handle periodic lastActive updates (every 30 seconds while connected)
+    const lastActiveInterval = setInterval(async () => {
+      try {
+        await User.findByIdAndUpdate(socket.user._id, { 
+          lastActive: new Date()
+        })
+      } catch (err) {
+        console.error('[Socket] Error updating lastActive:', err)
+      }
+    }, 30000) // Update every 30 seconds
+    
+    // Store interval ID on socket for cleanup in disconnect handler
+    socket.lastActiveInterval = lastActiveInterval
 
     // Error handling
     socket.on("error", (err) => {

@@ -335,4 +335,22 @@ class SocketService {
     _isConnected = false;
     debugPrint('Socket disconnected');
   }
+  
+  // Setup online status listener callback
+  Function(Map<String, dynamic>)? _onlineStatusCallback;
+  
+  void setupOnlineStatusListener(Function(Map<String, dynamic>) callback) {
+    _onlineStatusCallback = callback;
+    
+    // Listen for user online status changes
+    _socket?.on('userOnlineStatus', (data) {
+      if (_onlineStatusCallback != null) {
+        try {
+          _onlineStatusCallback!(data);
+        } catch (e) {
+          debugPrint('Error in online status callback: $e');
+        }
+      }
+    });
+  }
 }

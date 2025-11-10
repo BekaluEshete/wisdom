@@ -176,6 +176,38 @@ class ChatProvider with ChangeNotifier {
         chatName: chat.chatName,
         chatImage: chat.chatImage,
         isOnline: chat.isOnline,
+        lastActive: chat.lastActive,
+      );
+
+      _chats[chatIndex] = updatedChat;
+      notifyListeners();
+    }
+  }
+  
+  void updateUserOnlineStatus(String chatId, bool isOnline, DateTime? lastActive) {
+    final chatIndex = _chats.indexWhere((c) => c.id == chatId);
+    if (chatIndex != -1) {
+      final chat = _chats[chatIndex];
+      final updatedChat = Chat(
+        id: chat.id,
+        participants: chat.participants,
+        type: chat.type,
+        groupName: chat.groupName,
+        groupDescription: chat.groupDescription,
+        groupAdminId: chat.groupAdminId,
+        lastMessageId: chat.lastMessageId,
+        lastMessage: chat.lastMessage,
+        lastActivity: chat.lastActivity,
+        isActive: chat.isActive,
+        pinnedMessages: chat.pinnedMessages,
+        participantSettings: chat.participantSettings,
+        createdAt: chat.createdAt,
+        updatedAt: DateTime.now(),
+        unreadCount: chat.unreadCount,
+        chatName: chat.chatName,
+        chatImage: chat.chatImage,
+        isOnline: isOnline,
+        lastActive: lastActive,
       );
 
       _chats[chatIndex] = updatedChat;

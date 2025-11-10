@@ -29,6 +29,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   bool _isInitialLoad = true;
   String? _currentUserId;
   SocketService? _socketService;
+  bool? _otherUserOnline; // Track other user's online status
+  DateTime? _otherUserLastActive; // Track other user's last active time
   
   late AnimationController _animationController;
   late AnimationController _fabAnimationController;
@@ -45,6 +47,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _loadInitialMessages();
     _markChatAsRead();
     _connectToSocket();
+    
+    // Initialize online status from chat data
+    _otherUserOnline = widget.chat.isOnline;
+    _otherUserLastActive = widget.chat.lastActive;
   }
 
   void _initializeAnimations() {
@@ -106,12 +112,89 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       _socketService = SocketService(context);
       _socketService!.connect(token);
       
+      // Listen for online status updates
+      _setupOnlineStatusListener();
+      
       // Wait a bit for connection to establish, then join chat
       Future.delayed(const Duration(milliseconds: 1000), () {
         if (mounted && _socketService?.isConnected == true) {
           _socketService!.joinChat(widget.chat.id);
         }
       });
+    }
+  }
+  
+  void _setupOnlineStatusListener() {
+    // Wait for socket to be initialized
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (!mounted || _socketService == null) return;
+      
+      // Setup online status listener
+      _socketService!.setupOnlineStatusListener((data) {
+        try {
+          if (!mounted) return;
+          
+          // Get the other user's ID from the chat
+          final otherUserId = widget.chat.participants
+              .firstWhere((p) => p.id != _currentUserId, orElse: () => widget.chat.participants.first)
+              .id;
+          
+          // Check if this status update is for the other user in this chat
+          if (data['userId'] == otherUserId) {
+            setState(() {
+              _otherUserOnline = data['isOnline'] ?? false;
+              if (data['lastActive'] != null) {
+                _otherUserLastActive = DateTime.tryParse(data['lastActive'].toString());
+              }
+            });
+            
+            // Update chat provider
+            final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+            chatProvider.updateUserOnlineStatus(widget.chat.id, _otherUserOnline!, _otherUserLastActive);
+          }
+        } catch (e) {
+          debugPrint('Error handling userOnlineStatus: $e');
+        }
+      });
+    });
+  }
+  
+  String _getLastSeenText() {
+    if (_otherUserLastActive == null) {
+      return 'Offline';
+    }
+    
+    final now = DateTime.now();
+    final difference = now.difference(_otherUserLastActive!);
+    
+    if (difference.inMinutes < 1) {
+      return 'Last seen just now';
+    } else if (difference.inMinutes < 60) {
+      return 'Last seen ${difference.inMinutes} ${difference.inMinutes == 1 ? 'minute' : 'minutes'} ago';
+    } else if (difference.inHours < 24) {
+      return 'Last seen ${difference.inHours} ${difference.inHours == 1 ? 'hour' : 'hours'} ago';
+    } else if (difference.inDays < 7) {
+      return 'Last seen ${difference.inDays} ${difference.inDays == 1 ? 'day' : 'days'} ago';
+    } else {
+      // Format as date
+      final lastSeenDate = _otherUserLastActive!;
+      final today = DateTime.now();
+      final yesterday = today.subtract(const Duration(days: 1));
+      
+      String dateFormat;
+      if (lastSeenDate.year == today.year && 
+          lastSeenDate.month == today.month && 
+          lastSeenDate.day == today.day) {
+        dateFormat = 'Today';
+      } else if (lastSeenDate.year == yesterday.year && 
+                 lastSeenDate.month == yesterday.month && 
+                 lastSeenDate.day == yesterday.day) {
+        dateFormat = 'Yesterday';
+      } else {
+        dateFormat = '${lastSeenDate.day}/${lastSeenDate.month}/${lastSeenDate.year}';
+      }
+      
+      return 'Last seen $dateFormat';
     }
   }
 
@@ -262,7 +345,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  if (_socketService?.isConnected == true) ...[
+                                  if (_otherUserOnline == true) ...[
                                     Container(
                                       width: 8,
                                       height: 8,
@@ -272,17 +355,24 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                                       ),
                                     ),
                                     const SizedBox(width: 6),
-                                  ],
-                                  Text(
-                                    _socketService?.isConnected == true 
-                                        ? 'Online' 
-                                        : 'Connecting...',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
+                                    const Text(
+                                      'Online',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
-                                  ),
+                                  ] else ...[
+                                    Text(
+                                      _getLastSeenText(),
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.white70,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),

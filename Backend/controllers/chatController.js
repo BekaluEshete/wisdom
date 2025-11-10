@@ -153,24 +153,38 @@ const createDirectChat = async (req, res) => {
       type: "direct",
       participants: { $all: [userId, participantId], $size: 2 },
       isActive: true
-    }).populate('participants', 'firstName lastName profilePicture lastActive isOnline');
+    }).populate({
+      path: 'participants',
+      select: 'firstName lastName profilePicture lastActive isOnline',
+      match: { _id: { $ne: userId } } // Exclude current user
+    });
 
     if (existingChat) {
       // Format the response similar to getUserChats
-      const otherParticipant = existingChat.participants.find(
-        p => p._id.toString() !== userId.toString()
-      );
+      const otherParticipant = existingChat.participants.length > 0 
+        ? existingChat.participants[0] // First participant (since we filtered out current user)
+        : null;
+      
+      // If otherParticipant is null, fetch it separately
+      let participantData = null;
+      if (!otherParticipant) {
+        const participant = await User.findById(participantId)
+          .select('firstName lastName profilePicture lastActive isOnline');
+        participantData = participant;
+      }
+      
+      const finalParticipant = otherParticipant || participantData;
       
       return res.json({ 
         success: true, 
         data: {
           ...existingChat.toObject(),
-          chatName: otherParticipant 
-            ? `${otherParticipant.firstName || ''} ${otherParticipant.lastName || ''}`.trim()
+          chatName: finalParticipant 
+            ? `${finalParticipant.firstName || ''} ${finalParticipant.lastName || ''}`.trim()
             : 'Deleted User',
-          chatImage: otherParticipant?.profilePicture || null,
-          isOnline: otherParticipant?.isOnline || false,
-          lastActive: otherParticipant?.lastActive || null
+          chatImage: finalParticipant?.profilePicture || null,
+          isOnline: finalParticipant?.isOnline ?? false,
+          lastActive: finalParticipant?.lastActive || null
         }
       });
     }
@@ -196,25 +210,35 @@ const createDirectChat = async (req, res) => {
 
     await chat.save();
 
-    // Populate participants before sending response
-    await chat.populate('participants', 'firstName lastName profilePicture lastActive isOnline');
+    // Populate participants before sending response (exclude current user)
+    await chat.populate({
+      path: 'participants',
+      select: 'firstName lastName profilePicture lastActive isOnline',
+      match: { _id: { $ne: userId } } // Exclude current user
+    });
 
     // Format the response
-    const otherParticipant = chat.participants.find(
-      p => p._id.toString() !== userId.toString()
-    );
+    let finalParticipant = chat.participants.length > 0 
+      ? chat.participants[0] // First participant (since we filtered out current user)
+      : null;
+    
+    // If finalParticipant is null, fetch it separately
+    if (!finalParticipant) {
+      finalParticipant = await User.findById(participantId)
+        .select('firstName lastName profilePicture lastActive isOnline');
+    }
 
     res.status(201).json({ 
       success: true, 
       message: "Chat created successfully",
       data: {
         ...chat.toObject(),
-        chatName: otherParticipant 
-          ? `${otherParticipant.firstName || ''} ${otherParticipant.lastName || ''}`.trim()
+        chatName: finalParticipant 
+          ? `${finalParticipant.firstName || ''} ${finalParticipant.lastName || ''}`.trim()
           : 'Deleted User',
-        chatImage: otherParticipant?.profilePicture || null,
-        isOnline: otherParticipant?.isOnline || false,
-        lastActive: otherParticipant?.lastActive || null,
+        chatImage: finalParticipant?.profilePicture || null,
+        isOnline: finalParticipant?.isOnline ?? false,
+        lastActive: finalParticipant?.lastActive || null,
         unreadCount: 0
       }
     });
