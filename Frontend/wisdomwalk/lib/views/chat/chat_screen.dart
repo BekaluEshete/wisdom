@@ -11,6 +11,7 @@ import '../../providers/message_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../widgets/message_bubble.dart';
 import '../../widgets/message_input.dart';
+import '../../utils/error_messages.dart';
 
 class ChatScreen extends StatefulWidget {
   final Chat chat;
@@ -153,7 +154,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             chatProvider.updateUserOnlineStatus(widget.chat.id, _otherUserOnline!, _otherUserLastActive);
           }
         } catch (e) {
-          debugPrint('Error handling userOnlineStatus: $e');
+          // Silently handle online status errors
         }
       });
     });
@@ -561,7 +562,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               ),
               const SizedBox(height: 12),
               Text(
-                error,
+                ErrorMessages.getFriendlyMessage(error),
                 style: const TextStyle(
                   fontSize: 16,
                   color: Color(0xFF94A3B8),

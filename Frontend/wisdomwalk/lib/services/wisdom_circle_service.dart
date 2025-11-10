@@ -1,10 +1,9 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:wisdomwalk/models/wisdom_circle_model.dart';
 import 'package:wisdomwalk/services/local_storage_service.dart';
-import 'package:wisdomwalk/providers/auth_provider.dart';
-import 'package:provider/provider.dart';
-import 'package:flutter/material.dart';
+import 'package:wisdomwalk/utils/error_messages.dart';
 
 class WisdomCircleService {
   final String _baseUrl = 'https://wisdom-walk-app-7of9.onrender.com/api';
@@ -15,13 +14,7 @@ class WisdomCircleService {
   Future<Map<String, String>> _getHeaders(BuildContext? context) async {
     final token = await _localStorageService.getAuthToken();
     if (token == null || token.isEmpty) {
-      print('No auth token found');
-      throw Exception('Authentication token is missing');
-    }
-    if (context != null) {
-      final userId =
-          Provider.of<AuthProvider>(context, listen: false).currentUser?.id;
-      print('Fetching groups for user ID: $userId');
+      throw Exception(ErrorMessages.tokenMissing);
     }
     return {
       'Content-Type': 'application/json',
@@ -48,7 +41,6 @@ class WisdomCircleService {
     Map<String, dynamic> data,
     String groupType,
   ) {
-    print('Mapping group data for $groupType: $data');
     try {
       // Handle both _id and id fields
       final id = data['_id']?.toString() ?? data['id']?.toString() ?? '';
@@ -85,12 +77,11 @@ class WisdomCircleService {
         ...data,
         'id': id,
         '_id': id,
-        'topicType': topicType ?? groupType,
+        'topicType': topicType,
         'imageUrl': imageUrl,
         'memberCount': memberCount is int ? memberCount : (memberCount as num?)?.toInt() ?? 0,
       });
     } catch (e) {
-      print('Error mapping WisdomCircleModel: $e, data: $data');
       rethrow;
     }
   }
@@ -99,7 +90,7 @@ class WisdomCircleService {
   Future<List<WisdomCircleModel>> getWisdomCircles(
     BuildContext? context,
   ) async {
-    final headers = await _getHeaders(context);
+    final headers = await _getHeaders(null);
     final List<WisdomCircleModel> circles = [];
 
     try {
@@ -108,14 +99,10 @@ class WisdomCircleService {
           .timeout(
             Duration(seconds: 10),
             onTimeout: () {
-              print('Timeout fetching groups');
-              throw Exception('Connection timed out for groups');
+              throw Exception(ErrorMessages.connectionTimeout);
             },
           );
 
-      print(
-        'Response for groups: status=${response.statusCode}, body=${response.body}',
-      );
       _lastResponse = json.decode(response.body); // Store response
 
       if (response.statusCode == 200) {
@@ -123,7 +110,6 @@ class WisdomCircleService {
         if (data['success'] &&
             (data['groups'] is List || data['data'] is List)) {
           final groupList = (data['groups'] ?? data['data']) as List;
-          print('Found ${groupList.length} groups');
           circles.addAll(
             groupList.map((item) {
               final groupType =
@@ -133,32 +119,21 @@ class WisdomCircleService {
               return _mapToWisdomCircle(item, groupType!);
             }).toList(),
           );
-          print('Fetched circles: ${circles.length}');
-        } else {
-          print(
-            'Failed to fetch groups: ${data['message'] ?? 'Invalid response format'}',
-          );
         }
       } else if (response.statusCode == 404) {
-        print('Groups route not found: ${response.body}');
-        throw Exception(
-          'Server error: Groups route not found. Contact support.',
-        );
+        throw Exception(ErrorMessages.circlesLoadFailed);
       } else if (response.statusCode == 403) {
-        print('Access denied for groups: ${response.body}');
-        throw Exception('Access restricted: Join a group to view chats.');
+        throw Exception(ErrorMessages.authenticationRequired);
       } else {
-        print('HTTP error for groups: ${response.statusCode}');
-        throw Exception('Failed to fetch groups: ${response.statusCode}');
+        throw Exception(ErrorMessages.fromStatusCode(response.statusCode));
       }
     } catch (e) {
-      print('Error fetching groups: $e');
+      if (e is Exception && e.toString().contains(ErrorMessages.connectionTimeout)) {
+        rethrow;
+      }
       return circles;
     }
 
-    if (circles.isEmpty) {
-      print('No circles fetched from any group type');
-    }
     return circles;
   }
 
@@ -171,12 +146,9 @@ class WisdomCircleService {
           .timeout(
             Duration(seconds: 10),
             onTimeout: () {
-              throw Exception('Connection timed out for circle $circleId');
+              throw Exception(ErrorMessages.connectionTimeout);
             },
           );
-      print(
-        'Response for circle $circleId: status=${response.statusCode}, body=${response.body}',
-      );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -187,19 +159,14 @@ class WisdomCircleService {
                   : 'public';
           return _mapToWisdomCircle(data['group'], groupType!);
         } else {
-          throw Exception(
-            'Failed to fetch circle details: ${data['message'] ?? 'Invalid response'}',
-          );
+          throw Exception(ErrorMessages.circleDetailsFailed);
         }
       } else if (response.statusCode == 404) {
-        throw Exception('Circle details route not found. Contact support.');
+        throw Exception(ErrorMessages.circleDetailsFailed);
       } else {
-        throw Exception(
-          'Failed to fetch circle details: ${response.statusCode}',
-        );
+        throw Exception(ErrorMessages.fromStatusCode(response.statusCode));
       }
     } catch (e) {
-      print('Error fetching circle details: $e');
       rethrow;
     }
   }
@@ -219,19 +186,15 @@ class WisdomCircleService {
             // Empty body - backend uses authenticated user from token
           )
           .timeout(Duration(seconds: 10));
-      print(
-        'Join circle response: status=${response.statusCode}, body=${response.body}',
-      );
 
       if (response.statusCode != 200) {
-        final errorBody = json.decode(response.body);
-        throw Exception(
-          'Failed to join circle: ${errorBody['message'] ?? response.statusCode}',
-        );
+        throw Exception(ErrorMessages.circleJoinFailed);
       }
     } catch (e) {
-      print('Error joining circle: $e');
-      rethrow;
+      if (e is Exception && e.toString().contains(ErrorMessages.connectionTimeout)) {
+        rethrow;
+      }
+      throw Exception(ErrorMessages.circleJoinFailed);
     }
   }
 
@@ -250,19 +213,15 @@ class WisdomCircleService {
             // Empty body - backend uses authenticated user from token
           )
           .timeout(Duration(seconds: 10));
-      print(
-        'Leave circle response: status=${response.statusCode}, body=${response.body}',
-      );
 
       if (response.statusCode != 200) {
-        final errorBody = json.decode(response.body);
-        throw Exception(
-          'Failed to leave circle: ${errorBody['message'] ?? response.statusCode}',
-        );
+        throw Exception(ErrorMessages.circleLeaveFailed);
       }
     } catch (e) {
-      print('Error leaving circle: $e');
-      rethrow;
+      if (e is Exception && e.toString().contains(ErrorMessages.connectionTimeout)) {
+        rethrow;
+      }
+      throw Exception(ErrorMessages.circleLeaveFailed);
     }
   }
 
@@ -282,9 +241,6 @@ class WisdomCircleService {
             headers: headers,
           )
           .timeout(Duration(seconds: 10));
-      print(
-        'Get messages response: status=${response.statusCode}, body=${response.body}',
-      );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -297,19 +253,14 @@ class WisdomCircleService {
           }
           return [];
         } else {
-          throw Exception(
-            'Failed to fetch messages: ${data['message'] ?? 'Invalid response'}',
-          );
+          throw Exception(ErrorMessages.circleMessageLoadFailed);
         }
       } else if (response.statusCode == 404) {
-        throw Exception('Messages route not found. Contact support.');
+        throw Exception(ErrorMessages.circleMessageLoadFailed);
       } else {
-        throw Exception(
-          'Failed to fetch messages: ${response.statusCode} - ${response.body}',
-        );
+        throw Exception(ErrorMessages.fromStatusCode(response.statusCode));
       }
     } catch (e) {
-      print('Error fetching messages: $e');
       rethrow;
     }
   }
@@ -335,35 +286,25 @@ class WisdomCircleService {
             }),
           )
           .timeout(Duration(seconds: 10));
-      print(
-        'Send message response: status=${response.statusCode}, body=${response.body}',
-      );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = json.decode(response.body);
         if (data['success'] == true && data['data'] != null) {
-          print('✅ Sent message to circle $circleId');
-          print('📨 Message content: $content');
-          print('📨 Response data: ${data['data']}');
-
           // The backend returns the message object in data['data']
           return WisdomCircleMessage.fromJson(data['data']);
         } else {
-          throw Exception(
-            'Failed to send message: ${data['message'] ?? 'Invalid response'}',
-          );
+          throw Exception(ErrorMessages.circleMessageSendFailed);
         }
       } else if (response.statusCode == 404) {
-        throw Exception('Message route not found. Contact support.');
+        throw Exception(ErrorMessages.circleMessageSendFailed);
       } else {
-        final errorBody = json.decode(response.body);
-        throw Exception(
-          'Failed to send message: ${errorBody['message'] ?? response.statusCode}',
-        );
+        throw Exception(ErrorMessages.fromStatusCode(response.statusCode));
       }
     } catch (e) {
-      print('Error sending message: $e');
-      rethrow;
+      if (e is Exception && e.toString().contains(ErrorMessages.connectionTimeout)) {
+        rethrow;
+      }
+      throw Exception(ErrorMessages.circleMessageSendFailed);
     }
   }
 
@@ -384,18 +325,12 @@ class WisdomCircleService {
             body: json.encode({'likes': likes}),
           )
           .timeout(Duration(seconds: 10));
-      print(
-        'Update message likes response: status=${response.statusCode}, body=${response.body}',
-      );
 
       if (response.statusCode != 200) {
-        throw Exception(
-          'Failed to update message likes: ${response.statusCode} - ${response.body}',
-        );
+        throw Exception(ErrorMessages.actionFailed);
       }
     } catch (e) {
-      print('Error updating message likes: $e');
-      rethrow;
+      throw Exception(ErrorMessages.actionFailed);
     }
   }
 }

@@ -9,6 +9,7 @@ import 'package:wisdomwalk/services/local_storage_service.dart';
 import '../models/chat_model.dart';
 import '../services/api_service.dart';
 import '../models/user_model.dart';
+import 'package:wisdomwalk/utils/error_messages.dart';
 
 class ChatProvider with ChangeNotifier {
   final ApiService apiService = ApiService();
@@ -51,8 +52,7 @@ class ChatProvider with ChangeNotifier {
         _currentPage++;
       }
     } catch (e) {
-      _error = e.toString().replaceAll('Exception: ', '');
-      debugPrint('Error loading chats: $_error');
+      _error = ErrorMessages.fromException(e);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -237,7 +237,6 @@ class ChatProvider with ChangeNotifier {
       }
       return null;
     } catch (e) {
-      debugPrint('Existing chat check error: $e');
       return null;
     }
   }
@@ -246,12 +245,12 @@ class ChatProvider with ChangeNotifier {
     try {
       // 1. Validate input
       if (user.id.isEmpty) {
-        throw Exception('Invalid user ID');
+        throw Exception(ErrorMessages.validationFailed);
       }
 
       // 2. Get auth token safely
       final token = await LocalStorageService().getAuthToken();
-      if (token == null) throw Exception('Not authenticated');
+      if (token == null) throw Exception(ErrorMessages.tokenMissing);
 
       // 3. Make request with better timeout
       final response = await http
@@ -274,14 +273,13 @@ class ChatProvider with ChangeNotifier {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return Chat.fromJson(data['data']);
       } else {
-        throw Exception(data['message'] ?? 'Failed to create chat');
+        throw Exception(ErrorMessages.chatCreateFailed);
       }
     } on TimeoutException {
-      throw Exception('Server timeout. Try again later.');
+      throw Exception(ErrorMessages.connectionTimeout);
     } on SocketException {
-      throw Exception('No internet connection');
+      throw Exception(ErrorMessages.noInternetConnection);
     } catch (e) {
-      debugPrint('Chat creation error: $e');
       rethrow;
     }
   }

@@ -32,7 +32,6 @@ class SocketService {
     });
 
     _socket?.onConnect((_) {
-      debugPrint('Socket connected successfully');
       _isConnected = true;
       _startPingTimer();
       
@@ -43,12 +42,10 @@ class SocketService {
     });
 
     _socket?.onConnectError((data) {
-      debugPrint('Socket connection error: $data');
       _isConnected = false;
     });
 
     _socket?.onDisconnect((_) {
-      debugPrint('Socket disconnected - attempting reconnect');
       _isConnected = false;
       _cancelPingTimer();
       Future.delayed(const Duration(seconds: 2), () {
@@ -59,7 +56,7 @@ class SocketService {
     });
 
     _socket?.on('pong', (_) {
-      debugPrint('Socket connection alive');
+      // Connection alive
     });
 
     // Setup message event handlers
@@ -84,7 +81,7 @@ class SocketService {
         messageProvider.handleNewMessage(message);
         chatProvider.updateChatLastMessage(message.chatId, message);
       } catch (e) {
-        debugPrint('Error handling newMessage: $e');
+        // Silently handle message parsing errors
       }
     });
 
@@ -103,7 +100,7 @@ class SocketService {
         
         messageProvider.updateMessageEditStatus(chatId, messageId, content);
       } catch (e) {
-        debugPrint('Error handling messageEdited: $e');
+        // Silently handle message edit errors
       }
     });
 
@@ -119,7 +116,7 @@ class SocketService {
         
         messageProvider.handleMessageDeleted(messageId);
       } catch (e) {
-        debugPrint('Error handling messageDeleted: $e');
+        // Silently handle message delete errors
       }
     });
 
@@ -146,7 +143,7 @@ class SocketService {
         
         messageProvider.handleMessageReaction(chatId, messageId, reaction, isAdding);
       } catch (e) {
-        debugPrint('Error handling messageReaction: $e');
+        // Silently handle message reaction errors
       }
     });
 
@@ -164,7 +161,7 @@ class SocketService {
         
         messageProvider.handleMessagePinned(chatId, messageId);
       } catch (e) {
-        debugPrint('Error handling messagePinned: $e');
+        // Silently handle message pin errors
       }
     });
 
@@ -182,7 +179,7 @@ class SocketService {
         
         messageProvider.handleMessageUnpinned(chatId, messageId);
       } catch (e) {
-        debugPrint('Error handling messageUnpinned: $e');
+        // Silently handle message unpin errors
       }
     });
 
@@ -200,7 +197,7 @@ class SocketService {
         
         messageProvider.handleTypingIndicator(chatId, userId, true);
       } catch (e) {
-        debugPrint('Error handling typing: $e');
+        // Silently handle typing indicator errors
       }
     });
 
@@ -217,7 +214,7 @@ class SocketService {
         
         messageProvider.handleTypingIndicator(chatId, userId, false);
       } catch (e) {
-        debugPrint('Error handling stopTyping: $e');
+        // Silently handle stop typing errors
       }
     });
   }
@@ -333,7 +330,6 @@ class SocketService {
     _socket = null;
     _currentChatId = null;
     _isConnected = false;
-    debugPrint('Socket disconnected');
   }
   
   // Setup online status listener callback
@@ -348,7 +344,7 @@ class SocketService {
         try {
           _onlineStatusCallback!(data);
         } catch (e) {
-          debugPrint('Error in online status callback: $e');
+          // Silently handle online status callback errors
         }
       }
     });

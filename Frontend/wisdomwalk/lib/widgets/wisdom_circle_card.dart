@@ -94,7 +94,6 @@ class _WisdomCircleCardState extends State<WisdomCircleCard>
         }
       }
     } catch (e) {
-      print('Error fetching recent message: $e');
       // Silently fail - not critical for card display
     }
   }

@@ -6,6 +6,7 @@ import '../../models/chat_model.dart';
 import '../../services/user_service.dart';
 import '../../providers/chat_provider.dart';
 import 'chat_screen.dart';
+import '../../utils/error_messages.dart';
 
 class NewChatScreen extends StatefulWidget {
   const NewChatScreen({Key? key}) : super(key: key);
@@ -65,8 +66,7 @@ class _NewChatScreenState extends State<NewChatScreen> with SingleTickerProvider
       final users = await UserService.getRecentUsers();
       setState(() => _recentUsers = users);
     } catch (e) {
-      debugPrint('Error loading recent users: $e');
-      setState(() => _error = 'Failed to load recent users');
+      setState(() => _error = ErrorMessages.usersLoadFailed);
     } finally {
       setState(() => _isLoadingRecent = false);
     }
@@ -99,9 +99,8 @@ class _NewChatScreenState extends State<NewChatScreen> with SingleTickerProvider
       final users = await UserService.searchUsers(query);
       setState(() => _searchResults = users);
     } catch (e) {
-      debugPrint('Search error: $e');
       setState(() {
-        _error = 'Failed to search users';
+        _error = ErrorMessages.userSearchFailed;
         _searchResults = [];
       });
     } finally {

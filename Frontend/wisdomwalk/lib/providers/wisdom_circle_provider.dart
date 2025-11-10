@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:wisdomwalk/models/wisdom_circle_model.dart';
 import 'package:wisdomwalk/services/wisdom_circle_service.dart';
 import 'package:wisdomwalk/providers/auth_provider.dart';
+import 'package:wisdomwalk/utils/error_messages.dart';
 
 class WisdomCircleProvider with ChangeNotifier {
   final WisdomCircleService _service = WisdomCircleService();
@@ -24,40 +25,24 @@ class WisdomCircleProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final userId =
-          Provider.of<AuthProvider>(context, listen: false).currentUser?.id;
-      print('Fetching circles for user ID: $userId');
       _circles = await _service.getWisdomCircles(context);
       
       // Get the last response to check membership
       final response = _service.getLastResponse();
       final groups = response['groups'] as List<dynamic>? ?? [];
       
-      print('Backend response groups count: ${groups.length}');
-      print('Sample group data: ${groups.isNotEmpty ? groups.first : "none"}');
-      
       // Use isMember flag from backend response
       // The backend correctly sets isMember based on the authenticated user
       _joinedCircles = groups
           .where((group) {
             final isMember = group['isMember'] == true;
-            final groupId = group['_id']?.toString() ?? group['id']?.toString();
-            if (isMember) {
-              print('User is member of circle: $groupId (${group['name']})');
-            }
             return isMember;
           })
           .map((group) => group['_id']?.toString() ?? group['id']?.toString())
           .whereType<String>()
           .toList();
-      
-      print(
-        'Fetched ${_circles.length} circles, joined: ${_joinedCircles.length}',
-      );
-      print('Joined circle IDs: $_joinedCircles');
     } catch (e) {
-      _error = e.toString();
-      print('Error fetching circles: $e');
+      _error = ErrorMessages.fromException(e);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -71,7 +56,6 @@ class WisdomCircleProvider with ChangeNotifier {
 
     try {
       _selectedCircle = await _service.getWisdomCircleDetails(circleId);
-      print('Fetched details for circle $circleId');
       
       // If circle is joined, fetch messages
       if (_joinedCircles.contains(circleId)) {
@@ -79,16 +63,13 @@ class WisdomCircleProvider with ChangeNotifier {
           final messages = await _service.getCircleMessages(circleId: circleId);
           if (_selectedCircle != null) {
             _selectedCircle = _selectedCircle!.copyWith(messages: messages);
-            print('Fetched ${messages.length} messages for circle $circleId');
           }
         } catch (e) {
-          print('Error fetching messages for circle $circleId: $e');
           // Don't fail the whole operation if messages can't be fetched
         }
       }
     } catch (e) {
-      _error = e.toString();
-      print('Error fetching circle details: $e');
+      _error = ErrorMessages.fromException(e);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -112,17 +93,13 @@ class WisdomCircleProvider with ChangeNotifier {
         try {
           final messages = await _service.getCircleMessages(circleId: circleId);
           _selectedCircle = _selectedCircle!.copyWith(messages: messages);
-          print('Fetched ${messages.length} messages after joining circle $circleId');
         } catch (e) {
-          print('Error fetching messages after joining: $e');
           // Don't fail the join operation if messages can't be fetched
         }
       }
-      print('Joined circle $circleId for user $userId');
       notifyListeners();
     } catch (e) {
-      _error = e.toString();
-      print('Error joining circle: $e');
+      _error = ErrorMessages.fromException(e);
       notifyListeners();
       rethrow;
     }
@@ -143,11 +120,9 @@ class WisdomCircleProvider with ChangeNotifier {
           messages: [], // Clear messages when leaving
         );
       }
-      print('Left circle $circleId for user $userId');
       notifyListeners();
     } catch (e) {
-      _error = e.toString();
-      print('Error leaving circle: $e');
+      _error = ErrorMessages.fromException(e);
       notifyListeners();
       rethrow;
     }
@@ -173,11 +148,9 @@ class WisdomCircleProvider with ChangeNotifier {
           messages: [..._selectedCircle!.messages, message],
         );
       }
-      print('Sent message to circle $circleId');
       notifyListeners();
     } catch (e) {
-      _error = e.toString();
-      print('Error sending message: $e');
+      _error = ErrorMessages.fromException(e);
       notifyListeners();
       rethrow;
     }
@@ -228,11 +201,9 @@ class WisdomCircleProvider with ChangeNotifier {
             }).toList();
         _selectedCircle = _selectedCircle!.copyWith(messages: updatedMessages);
       }
-      print('Toggled like for message $messageId in circle $circleId');
       notifyListeners();
     } catch (e) {
-      _error = e.toString();
-      print('Error toggling like: $e');
+      _error = ErrorMessages.fromException(e);
       notifyListeners();
       rethrow;
     }

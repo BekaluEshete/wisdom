@@ -7,6 +7,7 @@ import 'package:wisdomwalk/services/local_storage_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:wisdomwalk/utils/error_messages.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
@@ -72,9 +73,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _loadUserFromToken() async {
     final token = await _localStorageService.getAuthToken();
-    debugPrint('Loading token from SharedPreferences: $token');
     if (token == null) {
-      debugPrint('No token found, user not logged in');
       _isLoading = false;
       notifyListeners();
       return;
@@ -84,14 +83,11 @@ class AuthProvider extends ChangeNotifier {
       _isLoading = true;
       notifyListeners();
       final user = await _authService.getCurrentUser();
-      debugPrint('User fetched: ${user.id}, ${user.email}');
       _currentUser = user;
     } catch (e) {
-      debugPrint('Auto-login failed: $e');
       if (e.toString().contains('401') ||
           e.toString().contains('Invalid token')) {
         await _localStorageService.clearAuthToken();
-        debugPrint('Token cleared due to invalid token');
       }
       _currentUser = null;
     } finally {
@@ -129,7 +125,7 @@ class AuthProvider extends ChangeNotifier {
       );
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = ErrorMessages.fromException(e);
       return false;
     } finally {
       _isLoading = false;
@@ -146,7 +142,7 @@ class AuthProvider extends ChangeNotifier {
       final verified = await _authService.verifyOtp(email: email, otp: otp);
       return verified;
     } catch (e) {
-      _error = e.toString();
+      _error = ErrorMessages.fromException(e);
       return false;
     } finally {
       _isLoading = false;
@@ -162,11 +158,9 @@ class AuthProvider extends ChangeNotifier {
     try {
       final user = await _authService.login(email: email, password: password);
       _currentUser = user;
-      debugPrint('Login successful, user: ${user.id}, ${user.email}');
       return true;
     } catch (e) {
-      _error = e.toString();
-      debugPrint('Login error: $e');
+      _error = ErrorMessages.fromException(e);
       return false;
     } finally {
       _isLoading = false;
@@ -215,13 +209,11 @@ class AuthProvider extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        _error = 'Failed to update profile: ${response.body}';
-        debugPrint(_error);
+        _error = ErrorMessages.fromStatusCode(response.statusCode);
         return false;
       }
     } catch (e) {
-      _error = 'Error updating profile: $e';
-      debugPrint(_error);
+      _error = ErrorMessages.fromException(e);
       return false;
     } finally {
       _isLoading = false;
@@ -238,7 +230,7 @@ class AuthProvider extends ChangeNotifier {
       await _authService.resendOtp(email: email);
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = ErrorMessages.fromException(e);
       return false;
     } finally {
       _isLoading = false;
@@ -255,7 +247,7 @@ class AuthProvider extends ChangeNotifier {
       await _authService.forgotPassword(email: email);
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = ErrorMessages.fromException(e);
       return false;
     } finally {
       _isLoading = false;
@@ -280,7 +272,7 @@ class AuthProvider extends ChangeNotifier {
       );
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = ErrorMessages.fromException(e);
       return false;
     } finally {
       _isLoading = false;
@@ -302,8 +294,7 @@ class AuthProvider extends ChangeNotifier {
       }
       return true;
     } catch (e) {
-      _error = e.toString();
-      debugPrint('Logout error: $e');
+      _error = ErrorMessages.fromException(e);
       return false;
     } finally {
       _isLoading = false;

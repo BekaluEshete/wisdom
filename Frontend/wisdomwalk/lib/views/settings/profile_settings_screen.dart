@@ -11,6 +11,7 @@ import 'dart:convert';
 import 'package:wisdomwalk/services/local_storage_service.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'dart:io';
+import 'package:wisdomwalk/utils/error_messages.dart';
 
 class ProfileSettingsScreen extends StatefulWidget {
   const ProfileSettingsScreen({Key? key}) : super(key: key);
@@ -71,8 +72,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
       _bioController.text = user.bio?.trim() ?? '';
       _locationController.text = '${user.city ?? ''}, ${user.country ?? ''}';
       _selectedInterests = List.from(user.wisdomCircleInterests);
-      debugPrint('Loaded user avatarUrl: ${user.avatarUrl}');
-      debugPrint('Loaded user bio: ${user.bio}');
     }
 
     _darkMode = authProvider.themeMode == ThemeMode.dark;
@@ -180,9 +179,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                           ),
                           fit: BoxFit.cover,
                           onError: (exception, stackTrace) {
-                            debugPrint(
-                              'Failed to load profile image: $exception',
-                            );
+                            // Silently handle image load errors
                           },
                         )
                         : null,
@@ -501,10 +498,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
       if (compressedImage == null) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Failed to compress image. Please try another image.',
-              ),
+            SnackBar(
+              content: Text(ErrorMessages.imageCompressionFailed),
               backgroundColor: Colors.red,
             ),
           );
@@ -522,12 +517,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         );
       } else if (context.mounted) {
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
-        String errorMessage =
-            authProvider.error ??
-            'Failed to update profile photo. Please try again.';
-        if (authProvider.error == null) {
-          authProvider.error = errorMessage;
-        }
+        final errorMessage = authProvider.error ?? ErrorMessages.imageUploadFailed;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
         );
@@ -553,27 +543,23 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
       );
 
       if (compressedFile == null) {
-        debugPrint('Image compression failed');
         Provider.of<AuthProvider>(context, listen: false).error =
-            'Image compression failed';
+            ErrorMessages.imageCompressionFailed;
         return null;
       }
 
       // Check file size
       final fileSize = await compressedFile.length();
-      debugPrint('Compressed image size: ${fileSize / 1024 / 1024} MB');
       if (fileSize > 2 * 1024 * 1024) {
-        debugPrint('Compressed image too large: ${fileSize / 1024 / 1024} MB');
         Provider.of<AuthProvider>(context, listen: false).error =
-            'Image size exceeds 2MB limit after compression';
+            ErrorMessages.imageTooLarge;
         return null;
       }
 
       return XFile(compressedFile.path);
     } catch (e) {
-      debugPrint('Error compressing image: $e');
       Provider.of<AuthProvider>(context, listen: false).error =
-          'Error compressing image: $e';
+          ErrorMessages.imageCompressionFailed;
       return null;
     }
   }
@@ -582,9 +568,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     try {
       final token = await LocalStorageService().getAuthToken();
       if (token == null) {
-        debugPrint('No auth token found');
         Provider.of<AuthProvider>(context, listen: false).error =
-            'No auth token found';
+            ErrorMessages.tokenMissing;
         return false;
       }
 
@@ -602,24 +587,18 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         filename: image.name,
       );
       request.files.add(multipartFile);
-      debugPrint('Uploading file with field name: file');
-      debugPrint('File path: ${image.path}, File name: ${image.name}');
 
       final response = await request.send().timeout(
         const Duration(seconds: 30),
         onTimeout: () {
-          throw TimeoutException('Request timed out after 30 seconds');
+          throw TimeoutException(ErrorMessages.connectionTimeout);
         },
       );
       final responseBody = await http.Response.fromStream(response);
 
-      debugPrint('Upload profile picture response: ${response.statusCode}');
-      debugPrint('Response body: ${responseBody.body}');
-
       if (response.statusCode == 200) {
         final data = json.decode(responseBody.body);
         final newAvatarUrl = data['data']['profilePicture'];
-        debugPrint('New avatar URL: $newAvatarUrl');
         Provider.of<AuthProvider>(
           context,
           listen: false,
@@ -627,17 +606,13 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         Provider.of<AuthProvider>(context, listen: false).error = null;
         return true;
       } else {
-        final errorData = json.decode(responseBody.body);
-        final errorMessage =
-            errorData['message'] ?? 'Failed to update profile photo';
-        debugPrint('Upload failed: ${responseBody.body}');
-        Provider.of<AuthProvider>(context, listen: false).error = errorMessage;
+        Provider.of<AuthProvider>(context, listen: false).error =
+            ErrorMessages.fromStatusCode(response.statusCode);
         return false;
       }
     } catch (e) {
-      debugPrint('Error uploading profile picture: $e');
       Provider.of<AuthProvider>(context, listen: false).error =
-          'Error uploading profile picture: $e';
+          ErrorMessages.fromException(e);
       return false;
     }
   }
@@ -676,7 +651,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(authProvider.error ?? 'Failed to update profile'),
+            content: Text(authProvider.error ?? ErrorMessages.profileUpdateFailed),
             backgroundColor: Colors.red,
           ),
         );

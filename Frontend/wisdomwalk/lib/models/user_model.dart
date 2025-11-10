@@ -47,12 +47,6 @@ class UserModel {
       final firstName = json['firstName']?.toString()?.trim() ?? '';
       final lastName = json['lastName']?.toString()?.trim() ?? '';
 
-      debugPrint(
-        'UserModel JSON: isAdminVerified=${json['isAdminVerified']}, '
-        'isBlocked=${json['isBlocked']}, verificationStatus=${json['verificationStatus']}, '
-        'profilePicture=${json['profilePicture']}',
-      );
-
       return UserModel(
         id: json['_id']?.toString() ?? json['id']?.toString() ?? '',
         fullName:
@@ -87,9 +81,6 @@ class UserModel {
         verificationStatus: json['verificationStatus']?.toString(),
       );
     } catch (e, stackTrace) {
-      debugPrint('Error parsing UserModel: $e');
-      debugPrint('Stack trace: $stackTrace');
-      debugPrint('Problematic JSON: $json');
       return UserModel.empty();
     }
   }

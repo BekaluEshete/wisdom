@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wisdomwalk/providers/wisdom_circle_provider.dart';
 import 'package:wisdomwalk/providers/auth_provider.dart';
+import 'package:wisdomwalk/utils/error_messages.dart';
 
 class WisdomCircleDetailScreen extends StatefulWidget {
   final String circleId;
@@ -23,7 +24,6 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<WisdomCircleProvider>();
-      print('Fetching details for circle ID: ${widget.circleId}');
       if (provider.selectedCircle == null ||
           provider.selectedCircle!.id != widget.circleId) {
         provider.fetchCircleDetails(widget.circleId);
@@ -364,9 +364,6 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
     }
 
     final isJoined = provider.joinedCircles.contains(widget.circleId);
-    print(
-      'Toggling join status for circle ${widget.circleId}, user ${user.id}, isJoined: $isJoined',
-    );
     try {
       if (isJoined) {
         await provider.leaveCircle(circleId: widget.circleId, userId: user.id);
@@ -390,10 +387,13 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
         }
       }
     } catch (e) {
-      print('Error toggling join status: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to ${isJoined ? 'leave' : 'join'} circle: $e'),
+          content: Text(
+            isJoined 
+              ? ErrorMessages.circleLeaveFailed
+              : ErrorMessages.circleJoinFailed
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -428,7 +428,6 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
       return;
     }
 
-    print('Sending message for circle ${widget.circleId}, user ${user.id}');
     try {
       await provider.sendMessage(
         circleId: widget.circleId,
@@ -448,10 +447,9 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
         }
       });
     } catch (e) {
-      print('Error sending message: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to send message: $e'),
+          content: Text(ErrorMessages.circleMessageSendFailed),
           backgroundColor: Colors.red,
         ),
       );

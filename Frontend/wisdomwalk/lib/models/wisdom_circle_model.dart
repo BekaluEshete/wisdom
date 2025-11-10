@@ -26,81 +26,24 @@ class WisdomCircleModel {
   });
 
   factory WisdomCircleModel.fromJson(Map<String, dynamic> json) {
-    // Log full JSON for debugging
-    print(
-      'Parsing WisdomCircleModel for ID ${json['id'] ?? json['_id']}: $json',
-    );
-
     // Handle isPrivate safely
     bool isPrivate = false;
-    if (json.containsKey('isPrivate')) {
-      if (json['isPrivate'] is bool) {
-        isPrivate = json['isPrivate'] as bool;
-      } else {
-        print(
-          'Invalid isPrivate type: ${json['isPrivate']?.runtimeType}, defaulting to false',
-        );
-      }
-    } else {
-      print('isPrivate field missing, defaulting to false');
+    if (json.containsKey('isPrivate') && json['isPrivate'] is bool) {
+      isPrivate = json['isPrivate'] as bool;
     }
 
     // Handle isActive safely
     bool isActive = false;
-    if (json.containsKey('isActive')) {
-      if (json['isActive'] is bool) {
-        isActive = json['isActive'] as bool;
-      } else {
-        print(
-          'Invalid isActive type: ${json['isActive']?.runtimeType}, defaulting to false',
-        );
-      }
+    if (json.containsKey('isActive') && json['isActive'] is bool) {
+      isActive = json['isActive'] as bool;
     }
 
-    // Handle members safely for memberCount and isMuted
+    // Handle members safely for memberCount
     int memberCount = 0;
     if (json.containsKey('members') && json['members'] is List) {
       final members = json['members'] as List<dynamic>;
       memberCount = members.length;
-      for (var i = 0; i < members.length; i++) {
-        final member = members[i];
-        if (member is Map<String, dynamic>) {
-          if (member.containsKey('isMuted')) {
-            if (member['isMuted'] is! bool) {
-              print(
-                'Invalid isMuted type for member $i: ${member['isMuted']?.runtimeType}, defaulting to false',
-              );
-            }
-          }
-          // Check for other potential boolean fields in member
-          member.forEach((key, value) {
-            if (key.startsWith('is') && value is Map<String, dynamic>) {
-              print('Unexpected map in member $i field: $key = $value');
-            }
-          });
-        } else {
-          print('Invalid member format at index $i: $member');
-        }
-      }
     }
-
-    // Handle settings safely
-    if (json.containsKey('settings') &&
-        json['settings'] is Map<String, dynamic>) {
-      final settings = json['settings'] as Map<String, dynamic>;
-      settings.forEach((key, value) {
-        if (key.startsWith('is') && value is Map<String, dynamic>) {
-          print('Unexpected map in settings field: $key = $value');
-        }
-      });
-    }
-
-    // Check all top-level fields for unexpected maps in boolean contexts
-    json.forEach((key, value) {
-      if (key.startsWith('is') && value is Map<String, dynamic>) {
-        print('Unexpected map in top-level field: $key = $value');
-      }
-    });
 
     return WisdomCircleModel(
       id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
@@ -120,11 +63,9 @@ class WisdomCircleModel {
                   try {
                     return WisdomCircleMessage.fromJson(message);
                   } catch (e) {
-                    print('Error parsing message: $e, message: $message');
                     return null;
                   }
                 }
-                print('Invalid message format: $message');
                 return null;
               })
               .whereType<WisdomCircleMessage>()
@@ -143,7 +84,6 @@ class WisdomCircleModel {
                   final message = pm['message'] as Map<String, dynamic>;
                   return message['_id']?.toString() ?? '';
                 }
-                print('Invalid pinnedMessage format: $pm');
                 return null;
               })
               .whereType<String>()
@@ -156,11 +96,9 @@ class WisdomCircleModel {
                   try {
                     return WisdomCircleEvent.fromJson(event);
                   } catch (e) {
-                    print('Error parsing event: $e, event: $event');
                     return null;
                   }
                 }
-                print('Invalid event format: $event');
                 return null;
               })
               .whereType<WisdomCircleEvent>()
@@ -207,13 +145,6 @@ class WisdomCircleMessage {
   });
 
   factory WisdomCircleMessage.fromJson(Map<String, dynamic> json) {
-    // Check for unexpected maps in boolean-like fields
-    json.forEach((key, value) {
-      if (key.startsWith('is') && value is Map<String, dynamic>) {
-        print('Unexpected map in WisdomCircleMessage field: $key = $value');
-      }
-    });
-
     return WisdomCircleMessage(
       id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
       userId: json['userId']?.toString() ?? json['sender']?.toString() ?? '',
@@ -272,13 +203,6 @@ class WisdomCircleEvent {
   });
 
   factory WisdomCircleEvent.fromJson(Map<String, dynamic> json) {
-    // Check for unexpected maps in boolean-like fields
-    json.forEach((key, value) {
-      if (key.startsWith('is') && value is Map<String, dynamic>) {
-        print('Unexpected map in WisdomCircleEvent field: $key = $value');
-      }
-    });
-
     return WisdomCircleEvent(
       id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
       title: json['title']?.toString() ?? 'Untitled Event',

@@ -4,6 +4,7 @@ import '../../providers/chat_provider.dart';
 import '../../models/chat_model.dart';
 import 'chat_screen.dart';
 import 'new_chat_screen.dart';
+import '../../utils/error_messages.dart';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({Key? key}) : super(key: key);
@@ -31,7 +32,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load chats: ${e.toString()}')),
+          SnackBar(content: Text(ErrorMessages.chatLoadFailed)),
         );
       }
     } finally {
@@ -307,9 +308,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              const Text(
-                'Failed to load chats',
-                style: TextStyle(
+              Text(
+                ErrorMessages.chatLoadFailed,
+                style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF475569),
@@ -317,7 +318,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                error.replaceAll('Exception: ', ''),
+                ErrorMessages.getFriendlyMessage(error),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 16,
