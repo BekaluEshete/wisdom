@@ -12,37 +12,18 @@ const getUserChats = async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
-    // First, get all groups the user is a member of
-    const Group = require("../models/group");
-    const userGroups = await Group.find({
-      "members.user": userId,
-      isActive: true,
-      deletedAt: null
-    }).select("_id");
-    const userGroupIds = userGroups.map(g => g._id.toString());
-    
-    // Fetch chats with optimized query
-    // Include both direct chats (user is participant) and group chats (user is member)
+    // Fetch ONLY direct (one-to-one) chats - NOT group chats
+    // Circles have their own messaging system and should not appear in personal chats
     const chats = await Chat.find({
-      $or: [
-        { 
-          type: "direct",
-          participants: userId, 
-          isActive: true 
-        }, // Direct chats where user is participant
-        { 
-          type: "group",
-          group: { $in: userGroupIds },
-          isActive: true 
-        } // Group chats where user is a member
-      ]
+      type: "direct", // Only direct one-to-one chats
+      participants: userId,
+      isActive: true
     })
       .populate({
         path: 'participants',
         select: 'firstName lastName profilePicture lastActive isOnline',
         match: { _id: { $ne: userId } } // Exclude current user from participants array
       })
-      .populate('group', 'name description avatar topicType')
       .populate({
         path: 'lastMessage',
         populate: {
@@ -91,40 +72,28 @@ const getUserChats = async (req, res) => {
           });
         }
 
-        // Handle direct chat specifics
-        if (chat.type === 'direct') {
-          const otherParticipant = chat.participants[0]; // Since we filtered out current user
-          
-          return {
-            ...chat,
-            unreadCount,
-            chatName: otherParticipant 
-              ? `${otherParticipant.firstName || ''} ${otherParticipant.lastName || ''}`.trim()
-              : 'Deleted User',
-            chatImage: otherParticipant?.profilePicture || null,
-            isOnline: otherParticipant?.isOnline || false,
-            lastActive: otherParticipant?.lastActive || null
-          };
-        }
-
-        // For group chats - use populated group info or chat fields
-        if (chat.type === 'group') {
-          const groupInfo = chat.group; // Already populated
-          return {
-            ...chat,
-            unreadCount,
-            chatName: groupInfo?.name || chat.groupName || 'Group Chat',
-            chatImage: groupInfo?.avatar || chat.groupImage || null,
-            groupDescription: groupInfo?.description || chat.groupDescription || null,
-            topicType: groupInfo?.topicType || null,
-            isOnline: false // Groups don't have online status
-          };
-        }
+        // Handle direct chat - get the other participant
+        const otherParticipant = chat.participants[0]; // Since we filtered out current user
         
-        // For direct chats, return as is (already handled above)
-        return chat;
+        return {
+          ...chat,
+          unreadCount,
+          chatName: otherParticipant 
+            ? `${otherParticipant.firstName || ''} ${otherParticipant.lastName || ''}`.trim()
+            : 'Deleted User',
+          chatImage: otherParticipant?.profilePicture || null,
+          isOnline: otherParticipant?.isOnline || false,
+          lastActive: otherParticipant?.lastActive || null
+        };
       })
     );
+
+    // Get total count for pagination (only direct chats)
+    const total = await Chat.countDocuments({
+      type: "direct",
+      participants: userId,
+      isActive: true
+    });
 
     // Filter out any null/undefined values
     const validChats = formattedChats.filter(chat => chat !== null);
@@ -132,7 +101,7 @@ const getUserChats = async (req, res) => {
     res.json({
       success: true,
       data: validChats,
-      pagination: getPaginationMeta(page, limit, validChats.length),
+      pagination: getPaginationMeta(page, limit, total),
     });
 
   } catch (error) {
@@ -240,13 +209,22 @@ const createDirectChat = async (req, res) => {
     // Check chat access
     const chat = await Chat.findOne({
       _id: chatId,
+      type: "direct", // Only allow direct one-to-one chats
       participants: userId,
     });
 
     if (!chat) {
       return res.status(404).json({
         success: false,
-        message: "Chat not found or access denied",
+        message: "Chat not found or access denied. This endpoint is only for direct chats.",
+      });
+    }
+
+    // Verify this is a direct chat
+    if (chat.type !== "direct") {
+      return res.status(403).json({
+        success: false,
+        message: "This endpoint is only for direct one-to-one chats.",
       });
     }
 
@@ -266,6 +244,14 @@ const createDirectChat = async (req, res) => {
       chat: chatId,
       isDeleted: false,
     });
+
+    // Verify this is a direct chat (not a circle/group chat)
+    if (chat.type !== "direct") {
+      return res.status(403).json({
+        success: false,
+        message: "This endpoint is only for direct chats",
+      });
+    }
 
     // Mark messages as read (only for real chats)
     if (!chatId.startsWith('preview-') && messages.length > 0) {
@@ -293,17 +279,17 @@ const createDirectChat = async (req, res) => {
         );
 
         // Update chat participant settings with last read message
-        const chat = await Chat.findById(chatId);
-        if (chat) {
-          const userSettingIndex = chat.participantSettings.findIndex(
+        const chatDoc = await Chat.findById(chatId);
+        if (chatDoc) {
+          const userSettingIndex = chatDoc.participantSettings.findIndex(
             s => s.user.toString() === userId.toString()
           );
           
           if (userSettingIndex >= 0) {
-            chat.participantSettings[userSettingIndex].lastReadMessage = mostRecentMessage._id;
+            chatDoc.participantSettings[userSettingIndex].lastReadMessage = mostRecentMessage._id;
           } else {
             // Create participant settings if they don't exist
-            chat.participantSettings.push({
+            chatDoc.participantSettings.push({
               user: userId,
               isMuted: false,
               joinedAt: new Date(),
@@ -311,7 +297,7 @@ const createDirectChat = async (req, res) => {
             });
           }
           
-          await chat.save();
+          await chatDoc.save();
         }
       }
     }
@@ -340,13 +326,22 @@ const sendMessage = async (req, res) => {
 
     const chat = await Chat.findOne({
       _id: chatId,
+      type: "direct", // Only allow direct one-to-one chats
       participants: userId,
     });
 
     if (!chat) {
       return res.status(404).json({
         success: false,
-        message: "Chat not found or access denied",
+        message: "Chat not found or access denied. This endpoint is only for direct chats.",
+      });
+    }
+
+    // Verify this is a direct chat
+    if (chat.type !== "direct") {
+      return res.status(403).json({
+        success: false,
+        message: "This endpoint is only for direct one-to-one chats.",
       });
     }
 
@@ -691,14 +686,32 @@ const forwardMessage = async (req, res) => {
       });
     }
 
+    // Verify the original message is from a direct chat
+    const originalChat = await Chat.findById(originalMessage.chat);
+    if (!originalChat || originalChat.type !== "direct") {
+      return res.status(403).json({
+        success: false,
+        message: "Can only forward messages from direct chats.",
+      });
+    }
+
     const targetChat = await Chat.findOne({
       _id: targetChatId,
+      type: "direct", // Only allow forwarding to direct chats
       participants: userId,
     });
     if (!targetChat) {
       return res.status(404).json({
         success: false,
-        message: "Target chat not found or access denied",
+        message: "Target chat not found or access denied. Only direct chats are supported.",
+      });
+    }
+
+    // Verify target is a direct chat
+    if (targetChat.type !== "direct") {
+      return res.status(403).json({
+        success: false,
+        message: "Can only forward messages to direct chats.",
       });
     }
 
@@ -777,13 +790,22 @@ const deleteChat = async (req, res) => {
 
     const chat = await Chat.findOne({
       _id: chatId,
+      type: "direct", // Only allow direct one-to-one chats
       participants: userId,
     });
 
     if (!chat) {
       return res.status(404).json({
         success: false,
-        message: "Chat not found or access denied",
+        message: "Chat not found or access denied. This endpoint is only for direct chats.",
+      });
+    }
+
+    // Verify this is a direct chat
+    if (chat.type !== "direct") {
+      return res.status(403).json({
+        success: false,
+        message: "This endpoint is only for direct one-to-one chats.",
       });
     }
 
@@ -819,13 +841,22 @@ const pinMessage = async (req, res) => {
 
     const chat = await Chat.findOne({
       _id: chatId,
+      type: "direct", // Only allow direct one-to-one chats
       participants: userId,
     });
 
     if (!chat) {
       return res.status(404).json({
         success: false,
-        message: "Chat not found or access denied",
+        message: "Chat not found or access denied. This endpoint is only for direct chats.",
+      });
+    }
+
+    // Verify this is a direct chat
+    if (chat.type !== "direct") {
+      return res.status(403).json({
+        success: false,
+        message: "This endpoint is only for direct one-to-one chats.",
       });
     }
 
@@ -877,13 +908,22 @@ const unpinMessage = async (req, res) => {
 
     const chat = await Chat.findOne({
       _id: chatId,
+      type: "direct", // Only allow direct one-to-one chats
       participants: userId,
     });
 
     if (!chat) {
       return res.status(404).json({
         success: false,
-        message: "Chat not found or access denied",
+        message: "Chat not found or access denied. This endpoint is only for direct chats.",
+      });
+    }
+
+    // Verify this is a direct chat
+    if (chat.type !== "direct") {
+      return res.status(403).json({
+        success: false,
+        message: "This endpoint is only for direct one-to-one chats.",
       });
     }
 
@@ -925,13 +965,22 @@ const muteChat = async (req, res) => {
 
     const chat = await Chat.findOne({
       _id: chatId,
+      type: "direct", // Only allow direct one-to-one chats
       participants: userId,
     });
 
     if (!chat) {
       return res.status(404).json({
         success: false,
-        message: "Chat not found or access denied",
+        message: "Chat not found or access denied. This endpoint is only for direct chats.",
+      });
+    }
+
+    // Verify this is a direct chat
+    if (chat.type !== "direct") {
+      return res.status(403).json({
+        success: false,
+        message: "This endpoint is only for direct one-to-one chats.",
       });
     }
 
@@ -963,13 +1012,22 @@ const unmuteChat = async (req, res) => {
 
     const chat = await Chat.findOne({
       _id: chatId,
+      type: "direct", // Only allow direct one-to-one chats
       participants: userId,
     });
 
     if (!chat) {
       return res.status(404).json({
         success: false,
-        message: "Chat not found or access denied",
+        message: "Chat not found or access denied. This endpoint is only for direct chats.",
+      });
+    }
+
+    // Verify this is a direct chat
+    if (chat.type !== "direct") {
+      return res.status(403).json({
+        success: false,
+        message: "This endpoint is only for direct one-to-one chats.",
       });
     }
 
@@ -1003,13 +1061,22 @@ const searchMessages = async (req, res) => {
 
     const chat = await Chat.findOne({
       _id: chatId,
+      type: "direct", // Only allow direct one-to-one chats
       participants: userId,
     });
 
     if (!chat) {
       return res.status(404).json({
         success: false,
-        message: "Chat not found or access denied",
+        message: "Chat not found or access denied. This endpoint is only for direct chats.",
+      });
+    }
+
+    // Verify this is a direct chat
+    if (chat.type !== "direct") {
+      return res.status(403).json({
+        success: false,
+        message: "This endpoint is only for direct one-to-one chats.",
       });
     }
 

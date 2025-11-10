@@ -35,39 +35,56 @@ module.exports = (io) => {
       lastActive: new Date()
     }).catch(err => console.error('Error updating user status:', err))
 
-    // Join user to all their chats (both direct and group)
+    // Join user to all their DIRECT chats only (not group/circle chats)
+    // Circles have their own messaging system
     Chat.find({ 
+      type: "direct", // Only direct one-to-one chats
       participants: socket.user._id,
       isActive: true
     }).then((chats) => {
       chats.forEach((chat) => {
         const chatRoomId = chat._id.toString()
         socket.join(chatRoomId)
-        console.log(`[Socket] User ${socket.user._id} joined chat ${chatRoomId}`)
+        console.log(`[Socket] User ${socket.user._id} joined direct chat ${chatRoomId}`)
       })
-      console.log(`[Socket] User ${socket.user._id} joined ${chats.length} chat(s)`)
+      console.log(`[Socket] User ${socket.user._id} joined ${chats.length} direct chat(s)`)
     }).catch(err => {
       console.error('[Socket] Error fetching user chats:', err)
     })
 
-    // Handle joining specific chat
-    socket.on("joinChat", (chatId) => {
-      socket.join(chatId)
-      console.log(`User ${socket.user._id} joined chat ${chatId}`)
+    // Handle joining specific direct chat
+    socket.on("joinChat", async (chatId) => {
+      try {
+        // Verify this is a direct chat
+        const chat = await Chat.findById(chatId)
+        if (chat && chat.type === "direct" && chat.participants.includes(socket.user._id)) {
+          socket.join(chatId)
+          console.log(`[Socket] User ${socket.user._id} joined direct chat ${chatId}`)
+        } else {
+          console.log(`[Socket] User ${socket.user._id} attempted to join invalid/non-direct chat ${chatId}`)
+        }
+      } catch (err) {
+        console.error(`[Socket] Error joining chat ${chatId}:`, err)
+      }
     })
 
     // Handle leaving specific chat
     socket.on("leaveChat", (chatId) => {
       socket.leave(chatId)
-      console.log(`User ${socket.user._id} left chat ${chatId}`)
+      console.log(`[Socket] User ${socket.user._id} left chat ${chatId}`)
     })
 
-    // Message handlers
+    // Message handlers - only for direct chats
     socket.on("sendMessage", async ({ chatId, content, messageType = "text", replyToId, files = [] }, callback) => {
       try {
         const userId = socket.user._id
-        const chat = await Chat.findOne({ _id: chatId, participants: userId })
-        if (!chat) throw new Error("Chat not found or access denied")
+        const chat = await Chat.findOne({ 
+          _id: chatId, 
+          type: "direct", // Only allow direct chats
+          participants: userId 
+        })
+        if (!chat) throw new Error("Chat not found or access denied. Only direct chats are supported.")
+        if (chat.type !== "direct") throw new Error("This endpoint is only for direct one-to-one chats.")
 
         const user = await User.findById(userId)
         const otherParticipants = chat.participants.filter((p) => p.toString() !== userId.toString())
@@ -184,12 +201,16 @@ module.exports = (io) => {
       }
     })
 
-    // Message pinning
+    // Message pinning - only for direct chats
     socket.on("pinMessage", async ({ chatId, messageId }) => {
       try {
         const userId = socket.user._id
-        const chat = await Chat.findOne({ _id: chatId, participants: userId })
-        if (!chat) return
+        const chat = await Chat.findOne({ 
+          _id: chatId, 
+          type: "direct", // Only allow direct chats
+          participants: userId 
+        })
+        if (!chat || chat.type !== "direct") return
 
         const message = await Message.findById(messageId)
         if (!message || message.chat.toString() !== chatId) return
@@ -217,12 +238,16 @@ module.exports = (io) => {
       }
     })
 
-    // Message unpinning
+    // Message unpinning - only for direct chats
     socket.on("unpinMessage", async ({ chatId, messageId }) => {
       try {
         const userId = socket.user._id
-        const chat = await Chat.findOne({ _id: chatId, participants: userId })
-        if (!chat) return
+        const chat = await Chat.findOne({ 
+          _id: chatId, 
+          type: "direct", // Only allow direct chats
+          participants: userId 
+        })
+        if (!chat || chat.type !== "direct") return
 
         const message = await Message.findById(messageId)
         if (!message || message.chat.toString() !== chatId) return
@@ -250,15 +275,19 @@ module.exports = (io) => {
       }
     })
 
-    // Message reactions
+    // Message reactions - only for direct chats
     socket.on("addReaction", async ({ chatId, messageId, emoji }) => {
       try {
         const userId = socket.user._id
         const message = await Message.findById(messageId)
         if (!message) return
 
-        const chat = await Chat.findOne({ _id: message.chat, participants: userId })
-        if (!chat) return
+        const chat = await Chat.findOne({ 
+          _id: message.chat, 
+          type: "direct", // Only allow direct chats
+          participants: userId 
+        })
+        if (!chat || chat.type !== "direct") return
 
         const existingReactionIndex = message.reactions.findIndex(
           (reaction) => reaction.user.toString() === userId.toString() && reaction.emoji === emoji,
@@ -303,18 +332,36 @@ module.exports = (io) => {
       }
     })
 
-    // Typing indicators
-    socket.on("typing", ({ chatId }) => {
-      socket.to(chatId).emit("typing", {
-        userId: socket.user._id,
-        firstName: socket.user.firstName,
-      })
+    // Typing indicators - only for direct chats
+    socket.on("typing", async ({ chatId }) => {
+      try {
+        // Verify this is a direct chat
+        const chat = await Chat.findById(chatId)
+        if (chat && chat.type === "direct" && chat.participants.includes(socket.user._id)) {
+          socket.to(chatId).emit("typing", {
+            userId: socket.user._id,
+            firstName: socket.user.firstName,
+            chatId: chatId,
+          })
+        }
+      } catch (err) {
+        console.error(`[Socket] Error in typing indicator:`, err)
+      }
     })
 
-    socket.on("stopTyping", ({ chatId }) => {
-      socket.to(chatId).emit("stopTyping", {
-        userId: socket.user._id,
-      })
+    socket.on("stopTyping", async ({ chatId }) => {
+      try {
+        // Verify this is a direct chat
+        const chat = await Chat.findById(chatId)
+        if (chat && chat.type === "direct" && chat.participants.includes(socket.user._id)) {
+          socket.to(chatId).emit("stopTyping", {
+            userId: socket.user._id,
+            chatId: chatId,
+          })
+        }
+      } catch (err) {
+        console.error(`[Socket] Error in stop typing indicator:`, err)
+      }
     })
 
     // Ping/Pong for connection health
