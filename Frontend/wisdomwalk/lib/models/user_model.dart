@@ -7,6 +7,7 @@ class UserModel {
   final String lastName;
   final String email;
   final String? avatarUrl;
+  final String? bio;
   final String? city;
   final String? subcity;
   final String? country;
@@ -25,6 +26,7 @@ class UserModel {
     this.lastName = '',
     required this.email,
     this.avatarUrl,
+    this.bio,
     this.city,
     this.subcity,
     this.country,
@@ -62,6 +64,7 @@ class UserModel {
         email: json['email']?.toString() ?? '',
         avatarUrl:
             json['avatarUrl']?.toString() ?? json['profilePicture']?.toString(),
+        bio: json['bio']?.toString(),
         city: json['city']?.toString() ?? json['location']?['city']?.toString(),
         subcity: json['subcity']?.toString(),
         country:
@@ -119,6 +122,7 @@ class UserModel {
     'lastName': lastName,
     'email': email,
     'avatarUrl': avatarUrl,
+    'bio': bio,
     'city': city,
     'subcity': subcity,
     'country': country,
@@ -156,6 +160,7 @@ class UserModel {
       lastName: lastName ?? this.lastName,
       email: email ?? this.email,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      bio: bio ?? this.bio,
       city: city ?? this.city,
       subcity: subcity ?? this.subcity,
       country: country ?? this.country,

@@ -200,7 +200,7 @@ class AuthProvider extends ChangeNotifier {
         body: json.encode({
           if (firstName != null) 'firstName': firstName,
           if (lastName != null) 'lastName': lastName,
-          if (bio != null) 'bio': bio,
+          'bio': bio ?? '', // Always send bio (even if empty) to allow clearing
           if (city != null && country != null)
             'location': {'city': city, 'country': country},
           if (subcity != null) 'subcity': subcity,

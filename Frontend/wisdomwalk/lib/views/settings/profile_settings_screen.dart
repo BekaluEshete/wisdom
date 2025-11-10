@@ -68,10 +68,11 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
 
     if (user != null) {
       _nameController.text = user.fullName;
-      _bioController.text = user.id ?? '';
+      _bioController.text = user.bio?.trim() ?? '';
       _locationController.text = '${user.city ?? ''}, ${user.country ?? ''}';
       _selectedInterests = List.from(user.wisdomCircleInterests);
       debugPrint('Loaded user avatarUrl: ${user.avatarUrl}');
+      debugPrint('Loaded user bio: ${user.bio}');
     }
 
     _darkMode = authProvider.themeMode == ThemeMode.dark;
@@ -258,8 +259,16 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
             TextFormField(
               controller: _bioController,
               maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'Tell us about yourself...',
+              maxLength: 500,
+              onChanged: (value) {
+                setState(() {}); // Rebuild to update helper text
+              },
+              decoration: InputDecoration(
+                hintText: 'Empty bio - Tell us about yourself...',
+                helperText: '${_bioController.text.length}/500 characters',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ],
@@ -643,7 +652,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
             _nameController.text.split(' ').length > 1
                 ? _nameController.text.split(' ').sublist(1).join(' ')
                 : null,
-        bio: _bioController.text,
+        bio: _bioController.text.trim(), // Always send bio (even if empty) to allow clearing
         city: _locationController.text.split(',').first.trim(),
         country:
             _locationController.text.split(',').length > 1

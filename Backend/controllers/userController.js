@@ -34,7 +34,7 @@ const updateProfile = async (req, res) => {
 
     if (firstName) updateData.firstName = firstName
     if (lastName) updateData.lastName = lastName
-    if (bio) updateData.bio = bio
+    if (bio !== undefined) updateData.bio = bio // Allow empty string to clear bio
     if (location) updateData.location = location
     if (preferences) updateData.preferences = { ...req.user.preferences, ...preferences }
 
