@@ -26,15 +26,28 @@ module.exports = (io) => {
   })
 
   io.on("connection", (socket) => {
-    console.log(`User connected: ${socket.user._id}`)
+    console.log(`[Socket] User connected: ${socket.user._id}`)
     connectedUsers.set(socket.user._id.toString(), socket.id)
+    
+    // Update user online status
+    User.findByIdAndUpdate(socket.user._id, { 
+      isOnline: true,
+      lastActive: new Date()
+    }).catch(err => console.error('Error updating user status:', err))
 
-    // Join user to all their chats
-    Chat.find({ participants: socket.user._id }).then((chats) => {
+    // Join user to all their chats (both direct and group)
+    Chat.find({ 
+      participants: socket.user._id,
+      isActive: true
+    }).then((chats) => {
       chats.forEach((chat) => {
-        socket.join(chat._id.toString())
-        console.log(`User ${socket.user._id} joined chat ${chat._id}`)
+        const chatRoomId = chat._id.toString()
+        socket.join(chatRoomId)
+        console.log(`[Socket] User ${socket.user._id} joined chat ${chatRoomId}`)
       })
+      console.log(`[Socket] User ${socket.user._id} joined ${chats.length} chat(s)`)
+    }).catch(err => {
+      console.error('[Socket] Error fetching user chats:', err)
     })
 
     // Handle joining specific chat
@@ -311,8 +324,14 @@ module.exports = (io) => {
 
     // Handle disconnection
     socket.on("disconnect", () => {
-      console.log(`User disconnected: ${socket.user._id}`)
+      console.log(`[Socket] User disconnected: ${socket.user._id}`)
       connectedUsers.delete(socket.user._id.toString())
+      
+      // Update user offline status
+      User.findByIdAndUpdate(socket.user._id, { 
+        isOnline: false,
+        lastActive: new Date()
+      }).catch(err => console.error('Error updating user status:', err))
     })
 
     // Error handling

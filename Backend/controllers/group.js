@@ -611,6 +611,47 @@ const joinGroup = async (req, res) => {
     });
     await group.save();
 
+    // Find or create chat for this group
+    let chat = await Chat.findOne({ group: group._id });
+    if (!chat) {
+      // Create chat if it doesn't exist
+      chat = new Chat({
+        type: "group",
+        participants: group.members.map(m => m.user), // Add all members
+        group: group._id,
+        groupName: group.name,
+        groupDescription: group.description,
+        groupAdmin: group.creator,
+      });
+      await chat.save();
+      
+      // Update group with chat reference
+      group.chat = chat._id;
+      await group.save();
+    } else {
+      // Add user to chat participants if not already present
+      const userInChat = chat.participants.some(
+        p => p.toString() === userId.toString()
+      );
+      if (!userInChat) {
+        chat.participants.push(userId);
+        await chat.save();
+      }
+      
+      // Add participant settings for the user
+      const userSettings = chat.participantSettings.find(
+        s => s.user.toString() === userId.toString()
+      );
+      if (!userSettings) {
+        chat.participantSettings.push({
+          user: userId,
+          isMuted: false,
+          joinedAt: new Date(),
+        });
+        await chat.save();
+      }
+    }
+
     // Populate the updated group
     const populatedGroup = await Group.findById(groupId)
       .populate("creator", "firstName lastName avatar")
@@ -929,16 +970,47 @@ const sendMessage = async (req, res) => {
     // Find or create chat for this group
     let chat = await Chat.findOne({ group: group._id });
     if (!chat) {
-      // Create chat if it doesn't exist
+      // Create chat if it doesn't exist with all group members as participants
       chat = new Chat({
         type: "group",
-        participants: [userId],
-        group: group._id
+        participants: group.members.map(m => m.user), // Add all group members
+        group: group._id,
+        groupName: group.name,
+        groupDescription: group.description,
+        groupAdmin: group.creator,
       });
       await chat.save();
+      
       // Update group with chat reference
       group.chat = chat._id;
       await group.save();
+    } else {
+      // Ensure all group members are in chat participants
+      const groupMemberIds = group.members.map(m => m.user.toString());
+      const chatParticipantIds = chat.participants.map(p => p.toString());
+      
+      // Add any missing members to chat
+      for (const member of group.members) {
+        const memberId = member.user.toString();
+        if (!chatParticipantIds.includes(memberId)) {
+          chat.participants.push(member.user);
+          
+          // Add participant settings
+          chat.participantSettings.push({
+            user: member.user,
+            isMuted: member.isMuted || false,
+            joinedAt: member.joinedAt || new Date(),
+          });
+        }
+      }
+      
+      // Remove participants who are no longer group members (except if they left recently)
+      chat.participants = chat.participants.filter(p => {
+        const participantId = p.toString();
+        return groupMemberIds.includes(participantId);
+      });
+      
+      await chat.save();
     }
 
     const message = new Message({
@@ -955,21 +1027,30 @@ const sendMessage = async (req, res) => {
 
     await message.save();
 
-    // Update chat's last message
-    await Chat.findByIdAndUpdate(chat._id, {
-      $push: { messages: message._id },
-      lastMessage: message._id,
-      lastActivity: Date.now()
-    });
+    // Update chat's last message and activity
+    chat.lastMessage = message._id;
+    chat.lastActivity = new Date();
+    await chat.save();
 
-    const populatedMessage = await Message.populate(message, [
-      { path: "sender", select: "firstName lastName avatar" },
-      { path: "replyTo", populate: { path: "sender", select: "firstName lastName" } }
-    ]);
+    // Populate message with sender and reply info
+    await message.populate("sender", "firstName lastName avatar");
+    if (message.replyTo) {
+      await message.populate({
+        path: "replyTo",
+        populate: { path: "sender", select: "firstName lastName avatar" }
+      });
+    }
+    
+    const io = req.app.get("io");
+    if (io) {
+      // Emit new message to all participants in the chat room
+      io.to(chat._id.toString()).emit("newMessage", message);
+    }
 
     res.status(201).json({ 
       success: true,
-      message: populatedMessage 
+      message: "Message sent successfully",
+      data: message
     });
   } catch (error) {
     console.error("Error sending message:", error);

@@ -12,29 +12,48 @@ const getUserChats = async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
-    // Fetch chats with optimized query
-    const chats = await Chat.find({
-      participants: userId,
+    // First, get all groups the user is a member of
+    const Group = require("../models/group");
+    const userGroups = await Group.find({
+      "members.user": userId,
       isActive: true,
-      lastMessage: { $exists: true } // Only include chats with messages
+      deletedAt: null
+    }).select("_id");
+    const userGroupIds = userGroups.map(g => g._id.toString());
+    
+    // Fetch chats with optimized query
+    // Include both direct chats (user is participant) and group chats (user is member)
+    const chats = await Chat.find({
+      $or: [
+        { 
+          type: "direct",
+          participants: userId, 
+          isActive: true 
+        }, // Direct chats where user is participant
+        { 
+          type: "group",
+          group: { $in: userGroupIds },
+          isActive: true 
+        } // Group chats where user is a member
+      ]
     })
       .populate({
         path: 'participants',
         select: 'firstName lastName profilePicture lastActive isOnline',
         match: { _id: { $ne: userId } } // Exclude current user from participants array
       })
-      .populate('lastMessage')
+      .populate('group', 'name description avatar topicType')
+      .populate({
+        path: 'lastMessage',
+        populate: {
+          path: 'sender',
+          select: 'firstName lastName avatar'
+        }
+      })
       .sort({ lastActivity: -1 })
       .skip(skip)
       .limit(limit)
       .lean(); // Use lean() for better performance
-
-    // Get total count for pagination
-    const total = await Chat.countDocuments({
-      participants: userId,
-      isActive: true,
-      lastMessage: { $exists: true }
-    });
 
     // Process chats in parallel
     const formattedChats = await Promise.all(
@@ -43,12 +62,34 @@ const getUserChats = async (req, res) => {
           setting => setting.user.toString() === userId.toString()
         );
 
-        // Calculate unread messages
-        const unreadCount = await Message.countDocuments({
-          chat: chat._id,
-          sender: { $ne: userId },
-          ...(userSettings?.lastReadMessage && { _id: { $gt: userSettings.lastReadMessage } })
-        });
+        // Calculate unread messages (messages after last read message)
+        let unreadCount = 0;
+        if (userSettings?.lastReadMessage) {
+          // Count messages created after the last read message
+          const lastReadMessage = await Message.findById(userSettings.lastReadMessage);
+          if (lastReadMessage) {
+            unreadCount = await Message.countDocuments({
+              chat: chat._id,
+              sender: { $ne: userId },
+              createdAt: { $gt: lastReadMessage.createdAt },
+              isDeleted: false,
+            });
+          } else {
+            // If lastReadMessage doesn't exist, count all messages from others
+            unreadCount = await Message.countDocuments({
+              chat: chat._id,
+              sender: { $ne: userId },
+              isDeleted: false,
+            });
+          }
+        } else {
+          // If no lastReadMessage, count all messages from others
+          unreadCount = await Message.countDocuments({
+            chat: chat._id,
+            sender: { $ne: userId },
+            isDeleted: false,
+          });
+        }
 
         // Handle direct chat specifics
         if (chat.type === 'direct') {
@@ -66,14 +107,22 @@ const getUserChats = async (req, res) => {
           };
         }
 
-        // For group chats
-        return {
-          ...chat,
-          unreadCount,
-          chatName: chat.groupName || 'Group Chat',
-          chatImage: chat.groupImage || null,
-          isOnline: false // Groups don't have online status
-        };
+        // For group chats - use populated group info or chat fields
+        if (chat.type === 'group') {
+          const groupInfo = chat.group; // Already populated
+          return {
+            ...chat,
+            unreadCount,
+            chatName: groupInfo?.name || chat.groupName || 'Group Chat',
+            chatImage: groupInfo?.avatar || chat.groupImage || null,
+            groupDescription: groupInfo?.description || chat.groupDescription || null,
+            topicType: groupInfo?.topicType || null,
+            isOnline: false // Groups don't have online status
+          };
+        }
+        
+        // For direct chats, return as is (already handled above)
+        return chat;
       })
     );
 
@@ -83,7 +132,7 @@ const getUserChats = async (req, res) => {
     res.json({
       success: true,
       data: validChats,
-      pagination: getPaginationMeta(page, limit, total),
+      pagination: getPaginationMeta(page, limit, validChats.length),
     });
 
   } catch (error) {
@@ -219,31 +268,52 @@ const createDirectChat = async (req, res) => {
     });
 
     // Mark messages as read (only for real chats)
-    if (!chatId.startsWith('preview-')) {
-      await Message.updateMany(
-        {
-          chat: chatId,
-          sender: { $ne: userId },
-          "readBy.user": { $ne: userId },
-        },
-        {
-          $push: {
-            readBy: {
-              user: userId,
-              readAt: new Date(),
+    if (!chatId.startsWith('preview-') && messages.length > 0) {
+      // Get the most recent message (last in the reversed array, which is first in time)
+      const mostRecentMessage = messages[messages.length - 1];
+      
+      if (mostRecentMessage) {
+        // Update all unread messages to include this user in readBy
+        await Message.updateMany(
+          {
+            chat: chatId,
+            sender: { $ne: userId },
+            createdAt: { $lte: mostRecentMessage.createdAt },
+            "readBy.user": { $ne: userId },
+            isDeleted: false,
+          },
+          {
+            $push: {
+              readBy: {
+                user: userId,
+                readAt: new Date(),
+              },
             },
-          },
-        }
-      );
+          }
+        );
 
-      await Chat.updateOne(
-        { _id: chatId, "participantSettings.user": userId },
-        {
-          $set: {
-            "participantSettings.$.lastReadMessage": messages[0]?._id,
-          },
+        // Update chat participant settings with last read message
+        const chat = await Chat.findById(chatId);
+        if (chat) {
+          const userSettingIndex = chat.participantSettings.findIndex(
+            s => s.user.toString() === userId.toString()
+          );
+          
+          if (userSettingIndex >= 0) {
+            chat.participantSettings[userSettingIndex].lastReadMessage = mostRecentMessage._id;
+          } else {
+            // Create participant settings if they don't exist
+            chat.participantSettings.push({
+              user: userId,
+              isMuted: false,
+              joinedAt: new Date(),
+              lastReadMessage: mostRecentMessage._id,
+            });
+          }
+          
+          await chat.save();
         }
-      );
+      }
     }
 
     res.json({
@@ -352,7 +422,17 @@ const sendMessage = async (req, res) => {
     }
     await Notification.insertMany(notifications);
 
-    io.to(chatId).emit("newMessage", message);
+    // Emit to all participants in the chat room
+    if (io) {
+      io.to(chatId.toString()).emit("newMessage", message);
+      
+      // Also emit chat update for chat list
+      io.to(chatId.toString()).emit("chatUpdated", {
+        chatId: chatId.toString(),
+        lastMessage: message,
+        lastActivity: chat.lastActivity,
+      });
+    }
 
     res.status(201).json({
       success: true,
