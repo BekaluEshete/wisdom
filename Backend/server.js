@@ -155,8 +155,17 @@ mongoose
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
-  .then(() => {
+  .then(async () => {
     console.log("MongoDB connected successfully!");
+
+    // Initialize default circles
+    const { ensureDefaultCircles } = require("./utils/initializeCircles");
+    try {
+      await ensureDefaultCircles();
+    } catch (error) {
+      console.error("Warning: Could not initialize default circles:", error.message);
+      // Continue server startup even if circles initialization fails
+    }
 
     const PORT = process.env.PORT || 5000;
     server.listen(PORT, "0.0.0.0", () => {

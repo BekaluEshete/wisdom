@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:wisdomwalk/models/wisdom_circle_model.dart';
 import 'package:wisdomwalk/providers/wisdom_circle_provider.dart';
+import 'package:wisdomwalk/providers/auth_provider.dart';
 import 'package:wisdomwalk/services/local_storage_service.dart';
 
 class WisdomCircleCard extends StatefulWidget {
@@ -45,53 +46,56 @@ class _WisdomCircleCardState extends State<WisdomCircleCard>
   }
 
   Future<void> _fetchRecentMessage() async {
+    // First, check if we have messages in the circle model
+    if (widget.circle.messages.isNotEmpty) {
+      final lastMessage = widget.circle.messages.last;
+      setState(() {
+        _recentMessage = '${lastMessage.userName}: "${lastMessage.content}"';
+        _unreadCount = widget.circle.messages
+            .where(
+              (msg) => msg.createdAt.isAfter(
+                DateTime.now().subtract(Duration(days: 1)),
+              ),
+            )
+            .length;
+      });
+      return;
+    }
+
+    // If no messages in model, try fetching from API
     try {
+      final token = await LocalStorageService().getAuthToken();
+      if (token == null || token.isEmpty) {
+        return;
+      }
+
       final response = await http.get(
         Uri.parse(
-          'https://wisdom-walk-app-7of9.onrender.com/api/groups/${_getGroupType(widget.circle.id)}/chats/${widget.circle.id}/messages?limit=1',
+          'https://wisdom-walk-app-7of9.onrender.com/api/groups/${widget.circle.id}/chat/messages?limit=1',
         ),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization':
-              'Bearer ${await LocalStorageService().getAuthToken()}',
+          'Authorization': 'Bearer $token',
         },
       );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['success'] && data['data'].isNotEmpty) {
-          final message = WisdomCircleMessage.fromJson(data['data'][0]);
-          setState(() {
-            _recentMessage = '${message.userName}: "${message.content}"';
-            // Assume unread count based on lastRead (not directly provided by API)
-            _unreadCount =
-                widget.circle.messages
-                    .where(
-                      (msg) => msg.createdAt.isAfter(
-                        DateTime.now().subtract(Duration(days: 1)),
-                      ),
-                    )
-                    .length; // Placeholder logic
-          });
+        if (data['success'] == true) {
+          // Handle different response structures
+          final messagesList = data['messages'] ?? data['data'] ?? [];
+          if (messagesList.isNotEmpty && messagesList is List) {
+            final message = WisdomCircleMessage.fromJson(messagesList[0]);
+            setState(() {
+              _recentMessage = '${message.userName}: "${message.content}"';
+              _unreadCount = 0; // Reset unread count since we only fetched 1 message
+            });
+          }
         }
       }
     } catch (e) {
       print('Error fetching recent message: $e');
-    }
-  }
-
-  String _getGroupType(String circleId) {
-    switch (circleId) {
-      case '1':
-        return 'single';
-      case '2':
-        return 'marriage';
-      case '3':
-        return 'motherhood';
-      case '4':
-        return 'healing';
-      default:
-        return 'single';
+      // Silently fail - not critical for card display
     }
   }
 
@@ -223,23 +227,59 @@ class _WisdomCircleCardState extends State<WisdomCircleCard>
                                 if (widget.isJoined) {
                                   widget.onTap();
                                 } else {
-                                  await provider.joinCircle(
-                                    circleId: widget.circle.id,
-                                    userId:
-                                        'user123', // Replace with AuthProvider.currentUser.id
+                                  final authProvider =
+                                      Provider.of<AuthProvider>(
+                                    context,
+                                    listen: false,
                                   );
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        '✅ Joined ${widget.circle.name}!',
+                                  final userId = authProvider.currentUser?.id;
+                                  if (userId == null) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Please log in to join circles',
+                                        ),
+                                        backgroundColor: Colors.red,
                                       ),
-                                      backgroundColor: const Color(0xFF00B894),
-                                      behavior: SnackBarBehavior.floating,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                  );
+                                    );
+                                    return;
+                                  }
+                                  try {
+                                    await provider.joinCircle(
+                                      circleId: widget.circle.id,
+                                      userId: userId,
+                                    );
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            '✅ Joined ${widget.circle.name}!',
+                                          ),
+                                          backgroundColor:
+                                              const Color(0xFF00B894),
+                                          behavior:
+                                              SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Failed to join circle: $e',
+                                          ),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  }
                                 }
                               },
                               style: ElevatedButton.styleFrom(
@@ -355,60 +395,68 @@ class _WisdomCircleCardState extends State<WisdomCircleCard>
   }
 
   LinearGradient _getCardGradient() {
-    switch (widget.circle.id) {
-      case '1': // Single & Purposeful
-        return const LinearGradient(
-          colors: [Color(0xFFFFE4E6), Color(0xFFFFF0F2)],
-        );
-      case '2': // Marriage & Ministry
-        return const LinearGradient(
-          colors: [Color(0xFFE8E4FF), Color(0xFFF0EDFF)],
-        );
-      case '3': // Motherhood in Christ
-        return const LinearGradient(
-          colors: [Color(0xFFE4F3FF), Color(0xFFF0F9FF)],
-        );
-      case '4': // Healing & Forgiveness
-        return const LinearGradient(
-          colors: [Color(0xFFE4FFE8), Color(0xFFF0FFF2)],
-        );
-      case '5': // Mental Health & Faith
-        return const LinearGradient(
-          colors: [Color(0xFFFFF4E4), Color(0xFFFFF9F0)],
-        );
-      default:
-        return const LinearGradient(
-          colors: [Color(0xFFF5F5F5), Color(0xFFFAFAFA)],
-        );
+    // Use topicType to determine gradient, fallback to name if topicType is null
+    final type = widget.circle.topicType?.toLowerCase() ?? 
+                 widget.circle.name.toLowerCase();
+    
+    if (type.contains('single') || type.contains('purposeful')) {
+      return const LinearGradient(
+        colors: [Color(0xFFFFE4E6), Color(0xFFFFF0F2)],
+      );
+    } else if (type.contains('marriage') || type.contains('ministry')) {
+      return const LinearGradient(
+        colors: [Color(0xFFE8E4FF), Color(0xFFF0EDFF)],
+      );
+    } else if (type.contains('motherhood') || type.contains('mother')) {
+      return const LinearGradient(
+        colors: [Color(0xFFE4F3FF), Color(0xFFF0F9FF)],
+      );
+    } else if (type.contains('healing') || type.contains('forgiveness')) {
+      return const LinearGradient(
+        colors: [Color(0xFFE4FFE8), Color(0xFFF0FFF2)],
+      );
+    } else if (type.contains('mental') || type.contains('health') || type.contains('faith')) {
+      return const LinearGradient(
+        colors: [Color(0xFFFFF4E4), Color(0xFFFFF9F0)],
+      );
+    } else {
+      // Default gradient based on circle name hash for consistency
+      return const LinearGradient(
+        colors: [Color(0xFFF5F5F5), Color(0xFFFAFAFA)],
+      );
     }
   }
 
   LinearGradient _getIconGradient() {
-    switch (widget.circle.id) {
-      case '1':
-        return const LinearGradient(
-          colors: [Color(0xFFE91E63), Color(0xFFAD1457)],
-        );
-      case '2':
-        return const LinearGradient(
-          colors: [Color(0xFF9C27B0), Color(0xFF6A1B9A)],
-        );
-      case '3':
-        return const LinearGradient(
-          colors: [Color(0xFF2196F3), Color(0xFF1565C0)],
-        );
-      case '4':
-        return const LinearGradient(
-          colors: [Color(0xFF4CAF50), Color(0xFF2E7D32)],
-        );
-      case '5':
-        return const LinearGradient(
-          colors: [Color(0xFFFF9800), Color(0xFFE65100)],
-        );
-      default:
-        return const LinearGradient(
-          colors: [Color(0xFF9E9E9E), Color(0xFF616161)],
-        );
+    // Use topicType to determine gradient, fallback to name if topicType is null
+    final type = widget.circle.topicType?.toLowerCase() ?? 
+                 widget.circle.name.toLowerCase();
+    
+    if (type.contains('single') || type.contains('purposeful')) {
+      return const LinearGradient(
+        colors: [Color(0xFFE91E63), Color(0xFFAD1457)],
+      );
+    } else if (type.contains('marriage') || type.contains('ministry')) {
+      return const LinearGradient(
+        colors: [Color(0xFF9C27B0), Color(0xFF6A1B9A)],
+      );
+    } else if (type.contains('motherhood') || type.contains('mother')) {
+      return const LinearGradient(
+        colors: [Color(0xFF2196F3), Color(0xFF1565C0)],
+      );
+    } else if (type.contains('healing') || type.contains('forgiveness')) {
+      return const LinearGradient(
+        colors: [Color(0xFF4CAF50), Color(0xFF2E7D32)],
+      );
+    } else if (type.contains('mental') || type.contains('health') || type.contains('faith')) {
+      return const LinearGradient(
+        colors: [Color(0xFFFF9800), Color(0xFFE65100)],
+      );
+    } else {
+      // Default gradient
+      return const LinearGradient(
+        colors: [Color(0xFF9E9E9E), Color(0xFF616161)],
+      );
     }
   }
 }

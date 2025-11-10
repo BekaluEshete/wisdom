@@ -28,26 +28,38 @@ class WisdomCircleProvider with ChangeNotifier {
           Provider.of<AuthProvider>(context, listen: false).currentUser?.id;
       print('Fetching circles for user ID: $userId');
       _circles = await _service.getWisdomCircles(context);
-      _joinedCircles =
-          _circles
-              .where((circle) {
-                // Check if user is in members list (based on backend response structure)
-                final response =
-                    _service
-                        .getLastResponse(); // Assume service stores last response
-                final group = response['groups']?.firstWhere(
-                  (g) => g['_id'] == circle.id,
-                  orElse: () => null,
-                );
-                if (group == null || userId == null) return false;
-                final members = group['members'] as List<dynamic>? ?? [];
-                return members.any((m) => m['user']?['_id'] == userId);
-              })
-              .map((circle) => circle.id)
-              .toList();
+      
+      // Get the last response to check membership
+      final response = _service.getLastResponse();
+      final groups = response['groups'] as List<dynamic>? ?? [];
+      
+      // Use isMember flag from backend response if available
+      // Otherwise fall back to checking members array
+      _joinedCircles = groups
+          .where((group) {
+            // Check if backend provided isMember flag
+            if (group['isMember'] == true) {
+              return true;
+            }
+            // Fallback: check members array
+            if (userId == null) return false;
+            final members = group['members'] as List<dynamic>? ?? [];
+            return members.any((m) {
+              final user = m['user'];
+              if (user is Map) {
+                return user['_id']?.toString() == userId || user['id']?.toString() == userId;
+              }
+              return user?.toString() == userId;
+            });
+          })
+          .map((group) => group['_id']?.toString() ?? group['id']?.toString())
+          .whereType<String>()
+          .toList();
+      
       print(
         'Fetched ${_circles.length} circles, joined: ${_joinedCircles.length}',
       );
+      print('Joined circle IDs: $_joinedCircles');
     } catch (e) {
       _error = e.toString();
       print('Error fetching circles: $e');
@@ -65,6 +77,20 @@ class WisdomCircleProvider with ChangeNotifier {
     try {
       _selectedCircle = await _service.getWisdomCircleDetails(circleId);
       print('Fetched details for circle $circleId');
+      
+      // If circle is joined, fetch messages
+      if (_joinedCircles.contains(circleId)) {
+        try {
+          final messages = await _service.getCircleMessages(circleId: circleId);
+          if (_selectedCircle != null) {
+            _selectedCircle = _selectedCircle!.copyWith(messages: messages);
+            print('Fetched ${messages.length} messages for circle $circleId');
+          }
+        } catch (e) {
+          print('Error fetching messages for circle $circleId: $e');
+          // Don't fail the whole operation if messages can't be fetched
+        }
+      }
     } catch (e) {
       _error = e.toString();
       print('Error fetching circle details: $e');
@@ -80,20 +106,22 @@ class WisdomCircleProvider with ChangeNotifier {
   }) async {
     try {
       await _service.joinCircle(circleId: circleId, userId: userId);
-      _joinedCircles.add(circleId);
+      if (!_joinedCircles.contains(circleId)) {
+        _joinedCircles.add(circleId);
+      }
       if (_selectedCircle?.id == circleId) {
-        _selectedCircle = WisdomCircleModel(
-          id: _selectedCircle!.id,
-          name: _selectedCircle!.name,
-          description: _selectedCircle!.description,
-          imageUrl: _selectedCircle!.imageUrl,
+        _selectedCircle = _selectedCircle!.copyWith(
           memberCount: _selectedCircle!.memberCount + 1,
-          messages: _selectedCircle!.messages,
-          pinnedMessages: _selectedCircle!.pinnedMessages,
-          events: _selectedCircle!.events,
-          topicType: _selectedCircle!.topicType,
-          isPrivate: _selectedCircle!.isPrivate,
         );
+        // Fetch messages after joining
+        try {
+          final messages = await _service.getCircleMessages(circleId: circleId);
+          _selectedCircle = _selectedCircle!.copyWith(messages: messages);
+          print('Fetched ${messages.length} messages after joining circle $circleId');
+        } catch (e) {
+          print('Error fetching messages after joining: $e');
+          // Don't fail the join operation if messages can't be fetched
+        }
       }
       print('Joined circle $circleId for user $userId');
       notifyListeners();
@@ -113,17 +141,11 @@ class WisdomCircleProvider with ChangeNotifier {
       await _service.leaveCircle(circleId: circleId, userId: userId);
       _joinedCircles.remove(circleId);
       if (_selectedCircle?.id == circleId) {
-        _selectedCircle = WisdomCircleModel(
-          id: _selectedCircle!.id,
-          name: _selectedCircle!.name,
-          description: _selectedCircle!.description,
-          imageUrl: _selectedCircle!.imageUrl,
-          memberCount: _selectedCircle!.memberCount - 1,
-          messages: _selectedCircle!.messages,
-          pinnedMessages: _selectedCircle!.pinnedMessages,
-          events: _selectedCircle!.events,
-          topicType: _selectedCircle!.topicType,
-          isPrivate: _selectedCircle!.isPrivate,
+        _selectedCircle = _selectedCircle!.copyWith(
+          memberCount: _selectedCircle!.memberCount > 0 
+              ? _selectedCircle!.memberCount - 1 
+              : 0,
+          messages: [], // Clear messages when leaving
         );
       }
       print('Left circle $circleId for user $userId');
@@ -152,17 +174,8 @@ class WisdomCircleProvider with ChangeNotifier {
         content: content,
       );
       if (_selectedCircle?.id == circleId) {
-        _selectedCircle = WisdomCircleModel(
-          id: _selectedCircle!.id,
-          name: _selectedCircle!.name,
-          description: _selectedCircle!.description,
-          imageUrl: _selectedCircle!.imageUrl,
-          memberCount: _selectedCircle!.memberCount,
+        _selectedCircle = _selectedCircle!.copyWith(
           messages: [..._selectedCircle!.messages, message],
-          pinnedMessages: _selectedCircle!.pinnedMessages,
-          events: _selectedCircle!.events,
-          topicType: _selectedCircle!.topicType,
-          isPrivate: _selectedCircle!.isPrivate,
         );
       }
       print('Sent message to circle $circleId');
@@ -218,18 +231,7 @@ class WisdomCircleProvider with ChangeNotifier {
               }
               return m;
             }).toList();
-        _selectedCircle = WisdomCircleModel(
-          id: _selectedCircle!.id,
-          name: _selectedCircle!.name,
-          description: _selectedCircle!.description,
-          imageUrl: _selectedCircle!.imageUrl,
-          memberCount: _selectedCircle!.memberCount,
-          messages: updatedMessages,
-          pinnedMessages: _selectedCircle!.pinnedMessages,
-          events: _selectedCircle!.events,
-          topicType: _selectedCircle!.topicType,
-          isPrivate: _selectedCircle!.isPrivate,
-        );
+        _selectedCircle = _selectedCircle!.copyWith(messages: updatedMessages);
       }
       print('Toggled like for message $messageId in circle $circleId');
       notifyListeners();

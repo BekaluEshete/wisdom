@@ -238,7 +238,6 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
                           itemCount: circle.messages.length,
                           itemBuilder: (context, index) {
                             final message = circle.messages[index];
-                            final isLiked = message.likes.contains(user.id);
                             return Container(
                               margin: const EdgeInsets.only(bottom: 16),
                               padding: const EdgeInsets.all(16),
@@ -379,12 +378,16 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
         );
       } else {
         await provider.joinCircle(circleId: widget.circleId, userId: user.id);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('🎉 Joined the circle!'),
-            backgroundColor: Color(0xFFE91E63),
-          ),
-        );
+        // Refresh circle details to get updated messages
+        await provider.fetchCircleDetails(widget.circleId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('🎉 Joined the circle!'),
+              backgroundColor: Color(0xFFE91E63),
+            ),
+          );
+        }
       }
     } catch (e) {
       print('Error toggling join status: $e');
@@ -430,60 +433,25 @@ class _WisdomCircleDetailScreenState extends State<WisdomCircleDetailScreen> {
       await provider.sendMessage(
         circleId: widget.circleId,
         userId: user.id,
-        userName: user.fullName ?? 'You',
+        userName: user.fullName.isNotEmpty ? user.fullName : 'You',
         userAvatar: user.avatarUrl,
         content: _messageController.text.trim(),
       );
       _messageController.clear();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
       });
     } catch (e) {
       print('Error sending message: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to send message: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  void _toggleLike(
-    WisdomCircleProvider provider,
-    String messageId,
-    bool isLiked,
-    String userId,
-  ) async {
-    if (!provider.joinedCircles.contains(widget.circleId)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please join the circle to like messages'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    print(
-      'Toggling like for message $messageId, user $userId, isLiked: $isLiked',
-    );
-    try {
-      await provider.toggleLikeMessage(
-        circleId: widget.circleId,
-        messageId: messageId,
-        userId: userId,
-        isLiked: isLiked,
-      );
-    } catch (e) {
-      print('Error toggling like: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to toggle like: $e'),
           backgroundColor: Colors.red,
         ),
       );

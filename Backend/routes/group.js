@@ -3,11 +3,42 @@ const router = express.Router();
 const groupController = require("../controllers/group");
 const { authenticateToken } = require("../middleware/auth");
 const { uploadMultiple } = require("../middleware/upload");
+const { initializeDefaultCircles } = require("../utils/initializeCircles");
 
 // Debugging - verify controller imports
 console.log("Group Controller Methods:", Object.keys(groupController));
 
 router.use(authenticateToken);
+
+// Initialize circles endpoint (admin only or for setup)
+router.post("/initialize-circles", async (req, res) => {
+  try {
+    // Only allow admins or if no circles exist
+    const Group = require("../models/group");
+    const circleCount = await Group.countDocuments({ isActive: true, deletedAt: null });
+    
+    if (circleCount > 0 && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: "Only admins can reinitialize circles when they already exist"
+      });
+    }
+
+    const result = await initializeDefaultCircles();
+    res.status(200).json({
+      success: true,
+      message: "Circles initialized successfully",
+      ...result
+    });
+  } catch (error) {
+    console.error("Error initializing circles:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to initialize circles",
+      error: error.message
+    });
+  }
+});
 
 // Group CRUD
 router.post("/", groupController.createGroup);
@@ -18,6 +49,7 @@ router.delete("/:groupId", groupController.deleteGroup);
 
 // Members
 router.post("/join/:inviteLink", groupController.joinGroupViaLink);
+router.post("/:groupId/join", groupController.joinGroup);
 router.post("/:groupId/leave", groupController.leaveGroup);
 router.post("/:groupId/members", groupController.addMember);
 router.delete("/:groupId/members/:userId", groupController.removeMember);

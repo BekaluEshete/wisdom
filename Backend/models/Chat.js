@@ -14,6 +14,10 @@ const chatSchema = new mongoose.Schema(
       enum: ["direct", "group"],
       default: "direct",
     },
+    group: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Group",
+    },
     groupName: String,
     groupDescription: String,
     groupAdmin: {
@@ -78,5 +82,6 @@ const chatSchema = new mongoose.Schema(
 chatSchema.index({ participants: 1 });
 chatSchema.index({ lastActivity: -1 });
 chatSchema.index({ type: 1 });
+chatSchema.index({ group: 1 });
 
 module.exports = mongoose.model("Chat", chatSchema);

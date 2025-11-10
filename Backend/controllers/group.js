@@ -69,16 +69,63 @@ const createGroup = async (req, res) => {
 
 const getAllGroups = async (req, res) => {
   try {
-    // If user is admin, fetch all groups; otherwise, fetch only groups where user is a member
-    const query = req.user.role === 'admin' ? {} : { "members.user": req.user._id };
+    const userId = req.user._id;
+    
+    // Ensure default circles exist before fetching
+    const { ensureDefaultCircles } = require("../utils/initializeCircles");
+    try {
+      await ensureDefaultCircles();
+    } catch (error) {
+      console.error("Warning: Could not ensure default circles:", error.message);
+      // Continue even if circle initialization fails
+    }
+    
+    // Fetch ALL public/active groups so users can discover them
+    // Only filter out deleted/inactive groups
+    const query = { 
+      isActive: true,
+      deletedAt: null,
+      // Only show public groups for discovery, or groups where user is a member
+      $or: [
+        { type: 'public' },
+        { "members.user": userId }
+      ]
+    };
+    
     const groups = await Group.find(query)
       .populate("creator", "firstName lastName avatar")
       .populate("members.user", "firstName lastName avatar")
-      .populate("admins", "firstName lastName avatar");
+      .populate("admins", "firstName lastName avatar")
+      .sort({ createdAt: -1 }); // Sort by newest first
+
+    // Add a flag to indicate if user is a member of each group
+    const groupsWithMembership = groups.map(group => {
+      const groupObj = group.toObject();
+      groupObj.isMember = isGroupMember(group, userId);
+      // Add imageUrl from avatar if not present
+      if (!groupObj.imageUrl && groupObj.avatar) {
+        groupObj.imageUrl = groupObj.avatar;
+      }
+      // Ensure topicType is included in response
+      if (!groupObj.topicType) {
+        // Infer from name if not set
+        const name = (groupObj.name || '').toLowerCase();
+        if (name.includes('single') || name.includes('purposeful')) {
+          groupObj.topicType = 'single';
+        } else if (name.includes('marriage') || name.includes('ministry')) {
+          groupObj.topicType = 'marriage';
+        } else if (name.includes('motherhood') || name.includes('mother')) {
+          groupObj.topicType = 'motherhood';
+        } else if (name.includes('healing') || name.includes('forgiveness')) {
+          groupObj.topicType = 'healing';
+        }
+      }
+      return groupObj;
+    });
 
     res.status(200).json({
       success: true,
-      groups: groups || [] // Ensure this matches what your frontend expects
+      groups: groupsWithMembership || [] // Return all discoverable groups
     });
   } catch (error) {
     console.error("Error fetching groups:", error);
@@ -280,7 +327,9 @@ const joinGroupViaLink = async (req, res) => {
 
 const leaveGroup = async (req, res) => {
   try {
-    const group = await Group.findById(req.params.groupId);
+    const groupId = req.params.groupId;
+    const userId = req.user._id; // Use authenticated user from token
+    const group = await Group.findById(groupId);
     
     if (!group) {
       return res.status(404).json({ 
@@ -289,21 +338,22 @@ const leaveGroup = async (req, res) => {
       });
     }
 
-    // if (!isGroupMember(group, req.user._id)) {
-    //   return res.status(400).json({ 
-    //     success: false,
-    //     message: "You are not a member of this group" 
-    //   });
-    // }
+    // Check if user is a member
+    if (!isGroupMember(group, userId)) {
+      return res.status(400).json({ 
+        success: false,
+        message: "You are not a member of this group" 
+      });
+    }
 
     // Remove from admins if admin
     group.admins = group.admins.filter(
-      adminId => adminId.toString() !== req.user._id.toString()
+      adminId => adminId.toString() !== userId.toString()
     );
 
     // Remove from members
     group.members = group.members.filter(
-      member => member.user.toString() !== req.user._id.toString()
+      member => member.user.toString() !== userId.toString()
     );
 
     await group.save();
@@ -316,7 +366,69 @@ const leaveGroup = async (req, res) => {
     console.error("Error leaving group:", error);
     res.status(500).json({ 
       success: false,
-      message: "Failed to leave group" 
+      message: "Failed to leave group",
+      error: error.message
+    });
+  }
+};
+
+// Join a group (user joins themselves)
+const joinGroup = async (req, res) => {
+  try {
+    const groupId = req.params.groupId;
+    // Use authenticated user's ID (don't require userId in body for security)
+    const userId = req.user._id;
+    const group = await Group.findById(groupId);
+
+    if (!group) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Group not found" 
+      });
+    }
+
+    // Check if group is active
+    if (!group.isActive || group.deletedAt) {
+      return res.status(400).json({ 
+        success: false,
+        message: "This group is no longer available" 
+      });
+    }
+
+    // Check if user is already a member
+    if (isGroupMember(group, userId)) {
+      return res.status(200).json({ 
+        success: true,
+        message: "You are already a member of this group",
+        group: group
+      });
+    }
+
+    // Add user as member
+    group.members.push({ 
+      user: userId,
+      joinedAt: new Date(),
+      role: "member"
+    });
+    await group.save();
+
+    // Populate the updated group
+    const populatedGroup = await Group.findById(groupId)
+      .populate("creator", "firstName lastName avatar")
+      .populate("members.user", "firstName lastName avatar")
+      .populate("admins", "firstName lastName avatar");
+
+    res.status(200).json({ 
+      success: true,
+      message: "Joined group successfully",
+      group: populatedGroup
+    });
+  } catch (error) {
+    console.error("Error joining group:", error);
+    res.status(500).json({ 
+      success: false,
+      message: "Failed to join group",
+      error: error.message
     });
   }
 };
@@ -525,7 +637,11 @@ const demoteAdmin = async (req, res) => {
 // Group Chat Operations
 const getChatMessages = async (req, res) => {
   try {
-    const group = await Group.findById(req.params.groupId);
+    const groupId = req.params.groupId;
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
+    
+    const group = await Group.findById(groupId);
     
     if (!group) {
       return res.status(404).json({ 
@@ -542,25 +658,36 @@ const getChatMessages = async (req, res) => {
     //   });
     // }
 
-    const chat = await Chat.findOne({ group: group._id })
-      .populate({
-        path: "messages",
-        options: { sort: { createdAt: -1 } },
-        populate: [
-          { path: "sender", select: "firstName lastName avatar" },
-          { path: "replyTo", populate: { path: "sender", select: "firstName lastName" } }
-        ]
+    const chat = await Chat.findOne({ group: group._id });
+    
+    if (!chat) {
+      return res.status(200).json({ 
+        success: true,
+        messages: [] 
       });
+    }
+
+    // Fetch messages with pagination
+    const messages = await Message.find({ chat: chat._id })
+      .populate("sender", "firstName lastName avatar")
+      .populate({ path: "replyTo", populate: { path: "sender", select: "firstName lastName" } })
+      .sort({ createdAt: -1 }) // Newest first
+      .limit(limit)
+      .skip(offset);
 
     res.status(200).json({ 
       success: true,
-      messages: chat?.messages || [] 
+      messages: messages || [],
+      limit,
+      offset,
+      total: await Message.countDocuments({ chat: chat._id })
     });
   } catch (error) {
     console.error("Error fetching chat messages:", error);
     res.status(500).json({ 
       success: false,
-      message: "Failed to fetch messages" 
+      message: "Failed to fetch messages",
+      error: error.message
     });
   }
 };
@@ -568,7 +695,10 @@ const getChatMessages = async (req, res) => {
 const sendMessage = async (req, res) => {
   try {
     const { content, replyTo } = req.body;
-    const group = await Group.findById(req.params.groupId);
+    const groupId = req.params.groupId;
+    const userId = req.user._id; // Use authenticated user from token
+    
+    const group = await Group.findById(groupId);
     
     if (!group) {
       return res.status(404).json({ 
@@ -577,17 +707,17 @@ const sendMessage = async (req, res) => {
       });
     }
 
-    // Allow sending if user is member or system admin
-    // if (!isGroupMember(group, req.user._id) && req.user.role !== 'admin') {
-    //   return res.status(403).json({ 
-    //     success: false,
-    //     message: "Access denied. Not a group member" 
-    //   });
-    // }
-
+    // Check if user is a member (allow sending if member)
     const member = group.members.find(
-      m => m.user.toString() === req.user._id.toString()
+      m => m.user.toString() === userId.toString()
     );
+
+    if (!member && req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false,
+        message: "You must be a member to send messages in this group" 
+      });
+    }
 
     // Check if user is muted (only applies to non-admins)
     if (member && member.isMuted && req.user.role !== 'admin') {
@@ -597,9 +727,24 @@ const sendMessage = async (req, res) => {
       });
     }
 
+    // Find or create chat for this group
+    let chat = await Chat.findOne({ group: group._id });
+    if (!chat) {
+      // Create chat if it doesn't exist
+      chat = new Chat({
+        type: "group",
+        participants: [userId],
+        group: group._id
+      });
+      await chat.save();
+      // Update group with chat reference
+      group.chat = chat._id;
+      await group.save();
+    }
+
     const message = new Message({
-      chat: group.chat,
-      sender: req.user._id,
+      chat: chat._id,
+      sender: userId, // Use authenticated user
       content,
       replyTo,
       attachments: req.files?.map(file => ({
@@ -612,7 +757,7 @@ const sendMessage = async (req, res) => {
     await message.save();
 
     // Update chat's last message
-    await Chat.findByIdAndUpdate(group.chat, {
+    await Chat.findByIdAndUpdate(chat._id, {
       $push: { messages: message._id },
       lastMessage: message._id,
       lastActivity: Date.now()
@@ -631,7 +776,8 @@ const sendMessage = async (req, res) => {
     console.error("Error sending message:", error);
     res.status(500).json({ 
       success: false,
-      message: "Failed to send message" 
+      message: "Failed to send message",
+      error: error.message
     });
   }
 };
@@ -954,6 +1100,7 @@ module.exports = {
   updateGroup,
   deleteGroup,
   joinGroupViaLink,
+  joinGroup,
   leaveGroup,
   addMember,
   removeMember,

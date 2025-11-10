@@ -60,6 +60,11 @@ const groupSchema = new mongoose.Schema(
       enum: ["public", "private", "restricted"],
       default: "public",
     },
+    topicType: {
+      type: String,
+      enum: ["single", "marriage", "motherhood", "healing"],
+      default: null,
+    },
     inviteLink: {
       type: String,
       unique: true,

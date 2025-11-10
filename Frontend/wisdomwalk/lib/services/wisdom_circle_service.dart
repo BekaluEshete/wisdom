@@ -45,13 +45,44 @@ class WisdomCircleService {
   ) {
     print('Mapping group data for $groupType: $data');
     try {
+      // Handle both _id and id fields
+      final id = data['_id']?.toString() ?? data['id']?.toString() ?? '';
+      
+      // Map avatar to imageUrl if imageUrl is not present
+      final imageUrl = data['imageUrl']?.toString() ?? 
+                      data['avatar']?.toString() ??
+                      'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&h=300&fit=crop';
+      
+      // Get member count from members array or memberCount field
+      final members = data['members'] as List? ?? [];
+      final memberCount = data['memberCount'] ?? members.length;
+      
+      // Get topicType from backend (if available), otherwise infer from name
+      String? topicType = data['topicType']?.toString();
+      if (topicType == null || topicType.isEmpty) {
+        // Fallback: infer from name if topicType not provided
+        final name = (data['name']?.toString() ?? '').toLowerCase();
+        if (name.contains('single') || name.contains('purposeful')) {
+          topicType = 'single';
+        } else if (name.contains('marriage') || name.contains('ministry')) {
+          topicType = 'marriage';
+        } else if (name.contains('motherhood') || name.contains('mother')) {
+          topicType = 'motherhood';
+        } else if (name.contains('healing') || name.contains('forgiveness')) {
+          topicType = 'healing';
+        } else {
+          // Default to groupType if nothing matches
+          topicType = groupType;
+        }
+      }
+      
       return WisdomCircleModel.fromJson({
         ...data,
-        'topicType': data['type']?.toString() ?? groupType,
-        'imageUrl':
-            data['imageUrl'] ??
-            'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&h=300&fit=crop',
-        'memberCount': (data['members'] as List?)?.length ?? 0,
+        'id': id,
+        '_id': id,
+        'topicType': topicType ?? groupType,
+        'imageUrl': imageUrl,
+        'memberCount': memberCount is int ? memberCount : (memberCount as num?)?.toInt() ?? 0,
       });
     } catch (e) {
       print('Error mapping WisdomCircleModel: $e, data: $data');
@@ -171,15 +202,16 @@ class WisdomCircleService {
   // Join a group
   Future<void> joinCircle({
     required String circleId,
-    required String userId,
+    required String userId, // Keep for compatibility but backend uses auth token
   }) async {
     final headers = await _getHeaders(null);
     try {
+      // Backend uses authenticated user from token, so we don't need to send userId in body
       final response = await http
           .post(
             Uri.parse('$_baseUrl/groups/$circleId/join'),
             headers: headers,
-            body: json.encode({'userId': userId}),
+            // Empty body - backend uses authenticated user from token
           )
           .timeout(Duration(seconds: 10));
       print(
@@ -187,8 +219,9 @@ class WisdomCircleService {
       );
 
       if (response.statusCode != 200) {
+        final errorBody = json.decode(response.body);
         throw Exception(
-          'Failed to join circle: ${response.statusCode} - ${response.body}',
+          'Failed to join circle: ${errorBody['message'] ?? response.statusCode}',
         );
       }
     } catch (e) {
@@ -200,15 +233,16 @@ class WisdomCircleService {
   // Leave a group
   Future<void> leaveCircle({
     required String circleId,
-    required String userId,
+    required String userId, // Keep for compatibility but backend uses auth token
   }) async {
     final headers = await _getHeaders(null);
     try {
+      // Backend uses authenticated user from token
       final response = await http
           .post(
             Uri.parse('$_baseUrl/groups/$circleId/leave'),
             headers: headers,
-            body: json.encode({'userId': userId}),
+            // Empty body - backend uses authenticated user from token
           )
           .timeout(Duration(seconds: 10));
       print(
@@ -216,8 +250,9 @@ class WisdomCircleService {
       );
 
       if (response.statusCode != 200) {
+        final errorBody = json.decode(response.body);
         throw Exception(
-          'Failed to leave circle: ${response.statusCode} - ${response.body}',
+          'Failed to leave circle: ${errorBody['message'] ?? response.statusCode}',
         );
       }
     } catch (e) {
@@ -226,25 +261,72 @@ class WisdomCircleService {
     }
   }
 
+  // Fetch messages for a group chat
+  Future<List<WisdomCircleMessage>> getCircleMessages({
+    required String circleId,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final headers = await _getHeaders(null);
+    try {
+      final response = await http
+          .get(
+            Uri.parse(
+              '$_baseUrl/groups/$circleId/chat/messages?limit=$limit&offset=$offset',
+            ),
+            headers: headers,
+          )
+          .timeout(Duration(seconds: 10));
+      print(
+        'Get messages response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          final messagesList = data['messages'] ?? data['data'] ?? [];
+          if (messagesList is List) {
+            return messagesList
+                .map((msg) => WisdomCircleMessage.fromJson(msg))
+                .toList();
+          }
+          return [];
+        } else {
+          throw Exception(
+            'Failed to fetch messages: ${data['message'] ?? 'Invalid response'}',
+          );
+        }
+      } else if (response.statusCode == 404) {
+        throw Exception('Messages route not found. Contact support.');
+      } else {
+        throw Exception(
+          'Failed to fetch messages: ${response.statusCode} - ${response.body}',
+        );
+      }
+    } catch (e) {
+      print('Error fetching messages: $e');
+      rethrow;
+    }
+  }
+
   // Send a message to a group chat
   Future<WisdomCircleMessage> sendMessage({
     required String circleId,
-    required String userId,
-    required String userName,
-    String? userAvatar,
+    required String userId, // Keep for compatibility but backend uses auth token
+    required String userName, // Keep for compatibility but backend uses auth token
+    String? userAvatar, // Keep for compatibility but backend uses auth token
     required String content,
   }) async {
     final headers = await _getHeaders(null);
     try {
+      // Backend uses authenticated user from token, so we only send content
       final response = await http
           .post(
             Uri.parse('$_baseUrl/groups/$circleId/chat/messages'),
             headers: headers,
             body: json.encode({
-              'userId': userId,
-              'userName': userName,
-              'userAvatar': userAvatar,
               'content': content,
+              // Note: Backend uses authenticated user from token, not from body
             }),
           )
           .timeout(Duration(seconds: 10));
@@ -267,8 +349,9 @@ class WisdomCircleService {
       } else if (response.statusCode == 404) {
         throw Exception('Message route not found. Contact support.');
       } else {
+        final errorBody = json.decode(response.body);
         throw Exception(
-          'Failed to send message: ${response.statusCode} - ${response.body}',
+          'Failed to send message: ${errorBody['message'] ?? response.statusCode}',
         );
       }
     } catch (e) {
