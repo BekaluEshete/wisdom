@@ -38,31 +38,45 @@ const DEFAULT_CIRCLES = [
  * Initialize default circles if they don't exist
  * This function creates the four main wisdom circles
  */
-const initializeDefaultCircles = async () => {
+const initializeDefaultCircles = async (userId = null) => {
   try {
-    console.log("Checking for default circles...");
+    console.log("[initializeDefaultCircles] Checking for default circles...");
+    if (userId) {
+      console.log(`[initializeDefaultCircles] Using provided userId: ${userId}`);
+    }
 
-    // Find an admin user to use as creator, or create a system user
-    let systemUser = await User.findOne({ role: "admin" }).sort({ createdAt: 1 });
+    // Find an admin user to use as creator, or use provided userId, or find any user
+    let systemUser = null;
+    
+    if (userId) {
+      systemUser = await User.findById(userId);
+      console.log(`[initializeDefaultCircles] Found user by ID: ${systemUser ? systemUser.email : 'not found'}`);
+    }
+    
+    if (!systemUser) {
+      systemUser = await User.findOne({ role: "admin" }).sort({ createdAt: 1 });
+      console.log(`[initializeDefaultCircles] Found admin user: ${systemUser ? systemUser.email : 'none'}`);
+    }
     
     if (!systemUser) {
       // If no admin exists, try to find any user (oldest first)
       systemUser = await User.findOne().sort({ createdAt: 1 });
-      
-      if (!systemUser) {
-        console.log("⚠️  No users found in database.");
-        console.log("   Default circles will be created automatically when the first user registers.");
-        console.log("   Or call this function again after users are created.");
-        return {
-          created: 0,
-          existing: 0,
-          circles: [],
-          message: "No users found. Circles will be created when users exist."
-        };
-      }
+      console.log(`[initializeDefaultCircles] Found any user: ${systemUser ? systemUser.email : 'none'}`);
     }
     
-    console.log(`Using user "${systemUser.email || systemUser._id}" as circle creator.`);
+    if (!systemUser) {
+      console.log("⚠️  [initializeDefaultCircles] No users found in database.");
+      console.log("   Default circles will be created automatically when the first user registers.");
+      console.log("   Or call this function again after users are created.");
+      return {
+        created: 0,
+        existing: 0,
+        circles: [],
+        message: "No users found. Circles will be created when users exist."
+      };
+    }
+    
+    console.log(`[initializeDefaultCircles] Using user "${systemUser.email || systemUser._id}" (${systemUser._id}) as circle creator.`);
 
     const createdCircles = [];
     const existingCircles = [];
@@ -82,7 +96,11 @@ const initializeDefaultCircles = async () => {
       }
 
       try {
+        console.log(`[initializeDefaultCircles] Creating circle: "${circleData.name}"`);
+        
         // Create the circle/group first
+        // Note: We create circles with the creator as admin but NOT as a member initially
+        // This allows all users to discover them. The creator can join later if needed.
         const circle = new Group({
           name: circleData.name,
           description: circleData.description,
@@ -90,11 +108,7 @@ const initializeDefaultCircles = async () => {
           topicType: circleData.topicType,
           creator: systemUser._id,
           admins: [systemUser._id],
-          members: [{ 
-            user: systemUser._id, 
-            role: "admin",
-            joinedAt: new Date()
-          }],
+          members: [], // Start with no members so all users can discover them
           avatar: circleData.avatar,
           isActive: true,
           settings: {
@@ -108,27 +122,35 @@ const initializeDefaultCircles = async () => {
           },
         });
 
+        console.log(`[initializeDefaultCircles] Saving circle: "${circleData.name}"`);
         await circle.save();
+        console.log(`[initializeDefaultCircles] Circle saved with ID: ${circle._id}`);
 
         // Create chat for the circle
+        // Start with no participants - they'll be added when users join
         const chat = new Chat({
           type: "group",
-          participants: [systemUser._id],
+          participants: [], // Start empty - participants added when users join
           group: circle._id,
           groupName: circleData.name,
           groupDescription: circleData.description,
           groupAdmin: systemUser._id,
         });
+        console.log(`[initializeDefaultCircles] Saving chat for circle: "${circleData.name}"`);
         await chat.save();
+        console.log(`[initializeDefaultCircles] Chat saved with ID: ${chat._id}`);
 
         // Update circle with chat reference
         circle.chat = chat._id;
         await circle.save();
+        console.log(`[initializeDefaultCircles] Circle updated with chat reference`);
 
         createdCircles.push(circle);
-        console.log(`✅ Created circle: "${circleData.name}"`);
+        console.log(`✅ [initializeDefaultCircles] Created circle: "${circleData.name}" (ID: ${circle._id})`);
       } catch (error) {
-        console.error(`Error creating circle "${circleData.name}":`, error.message);
+        console.error(`❌ [initializeDefaultCircles] Error creating circle "${circleData.name}":`, error.message);
+        console.error(`[initializeDefaultCircles] Error stack:`, error.stack);
+        console.error(`[initializeDefaultCircles] Error details:`, error);
       }
     }
 
@@ -158,17 +180,23 @@ const initializeDefaultCircles = async () => {
 /**
  * Ensure default circles exist (called on server startup and when needed)
  */
-const ensureDefaultCircles = async () => {
+const ensureDefaultCircles = async (userId = null) => {
   try {
+    console.log("[ensureDefaultCircles] Starting check for default circles...");
+    
     // Check if any circles exist
     const circleCount = await Group.countDocuments({ 
       isActive: true, 
       deletedAt: null 
     });
+    
+    console.log(`[ensureDefaultCircles] Found ${circleCount} active circles in database`);
 
     if (circleCount === 0) {
-      console.log("No circles found. Initializing default circles...");
-      await initializeDefaultCircles();
+      console.log("[ensureDefaultCircles] No circles found. Initializing default circles...");
+      const result = await initializeDefaultCircles(userId);
+      console.log(`[ensureDefaultCircles] Initialization result:`, result);
+      return result;
     } else {
       // Check if all default circles exist
       const defaultCircleNames = DEFAULT_CIRCLES.map(c => c.name);
@@ -180,18 +208,35 @@ const ensureDefaultCircles = async () => {
 
       const existingNames = existingCircles.map(c => c.name);
       const missingNames = defaultCircleNames.filter(name => !existingNames.includes(name));
+      
+      console.log(`[ensureDefaultCircles] Existing circles: ${existingNames.join(", ")}`);
+      console.log(`[ensureDefaultCircles] Missing circles: ${missingNames.join(", ") || "none"}`);
 
       if (missingNames.length > 0) {
-        console.log(`Some default circles are missing: ${missingNames.join(", ")}`);
-        console.log("Creating missing circles...");
-        await initializeDefaultCircles();
+        console.log(`[ensureDefaultCircles] Some default circles are missing: ${missingNames.join(", ")}`);
+        console.log("[ensureDefaultCircles] Creating missing circles...");
+        const result = await initializeDefaultCircles(userId);
+        console.log(`[ensureDefaultCircles] Creation result:`, result);
+        return result;
       } else {
-        console.log("All default circles exist.");
+        console.log("[ensureDefaultCircles] All default circles exist.");
+        return {
+          created: 0,
+          existing: circleCount,
+          circles: existingCircles,
+        };
       }
     }
   } catch (error) {
-    console.error("Error ensuring default circles:", error);
+    console.error("[ensureDefaultCircles] Error ensuring default circles:", error);
+    console.error("[ensureDefaultCircles] Error stack:", error.stack);
     // Don't throw - allow server to start even if circles can't be created
+    return {
+      created: 0,
+      existing: 0,
+      circles: [],
+      error: error.message
+    };
   }
 };
 

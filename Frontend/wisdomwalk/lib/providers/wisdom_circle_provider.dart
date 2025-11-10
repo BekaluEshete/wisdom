@@ -33,24 +33,19 @@ class WisdomCircleProvider with ChangeNotifier {
       final response = _service.getLastResponse();
       final groups = response['groups'] as List<dynamic>? ?? [];
       
-      // Use isMember flag from backend response if available
-      // Otherwise fall back to checking members array
+      print('Backend response groups count: ${groups.length}');
+      print('Sample group data: ${groups.isNotEmpty ? groups.first : "none"}');
+      
+      // Use isMember flag from backend response
+      // The backend correctly sets isMember based on the authenticated user
       _joinedCircles = groups
           .where((group) {
-            // Check if backend provided isMember flag
-            if (group['isMember'] == true) {
-              return true;
+            final isMember = group['isMember'] == true;
+            final groupId = group['_id']?.toString() ?? group['id']?.toString();
+            if (isMember) {
+              print('User is member of circle: $groupId (${group['name']})');
             }
-            // Fallback: check members array
-            if (userId == null) return false;
-            final members = group['members'] as List<dynamic>? ?? [];
-            return members.any((m) {
-              final user = m['user'];
-              if (user is Map) {
-                return user['_id']?.toString() == userId || user['id']?.toString() == userId;
-              }
-              return user?.toString() == userId;
-            });
+            return isMember;
           })
           .map((group) => group['_id']?.toString() ?? group['id']?.toString())
           .whereType<String>()
@@ -248,9 +243,4 @@ class WisdomCircleProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // Temporary method to access last response (replace with proper backend fix)
-  Map<String, dynamic> getLastResponse() {
-    // Assume service stores last response; implement in WisdomCircleService
-    return {};
-  }
 }

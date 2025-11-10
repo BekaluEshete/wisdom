@@ -9,7 +9,7 @@ import 'package:flutter/material.dart';
 class WisdomCircleService {
   final String _baseUrl = 'https://wisdom-walk-app-7of9.onrender.com/api';
   final LocalStorageService _localStorageService = LocalStorageService();
-  Map<String, dynamic>? _lastResponse; // Store last groups response
+  Map<String, dynamic> _lastResponse = {}; // Store last groups response
 
   // Helper to get auth headers
   Future<Map<String, String>> _getHeaders(BuildContext? context) async {
@@ -27,6 +27,11 @@ class WisdomCircleService {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer $token',
     };
+  }
+
+  // Get last API response
+  Map<String, dynamic> getLastResponse() {
+    return _lastResponse;
   }
 
   // Map backend group types to frontend circle IDs
@@ -390,10 +395,5 @@ class WisdomCircleService {
       print('Error updating message likes: $e');
       rethrow;
     }
-  }
-
-  // Get last groups response
-  Map<String, dynamic> getLastResponse() {
-    return _lastResponse ?? {};
   }
 }

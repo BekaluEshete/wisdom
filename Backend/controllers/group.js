@@ -70,15 +70,25 @@ const createGroup = async (req, res) => {
 const getAllGroups = async (req, res) => {
   try {
     const userId = req.user._id;
+    console.log(`[getAllGroups] User ${userId} requesting groups`);
     
     // Ensure default circles exist before fetching
+    // Pass the authenticated user ID so circles can be created even if no other users exist
     const { ensureDefaultCircles } = require("../utils/initializeCircles");
     try {
-      await ensureDefaultCircles();
+      console.log(`[getAllGroups] Ensuring default circles exist with user ${userId}...`);
+      const result = await ensureDefaultCircles(userId);
+      console.log(`[getAllGroups] ensureDefaultCircles result:`, JSON.stringify(result, null, 2));
     } catch (error) {
-      console.error("Warning: Could not ensure default circles:", error.message);
+      console.error("[getAllGroups] Warning: Could not ensure default circles:", error);
+      console.error("[getAllGroups] Error stack:", error.stack);
       // Continue even if circle initialization fails
     }
+    
+    // First, check how many groups exist in database
+    const totalGroups = await Group.countDocuments({});
+    const activeGroups = await Group.countDocuments({ isActive: true, deletedAt: null });
+    console.log(`[getAllGroups] Total groups in DB: ${totalGroups}, Active: ${activeGroups}`);
     
     // Fetch ALL public/active groups so users can discover them
     // Only filter out deleted/inactive groups
@@ -92,20 +102,27 @@ const getAllGroups = async (req, res) => {
       ]
     };
     
+    console.log(`[getAllGroups] Query:`, JSON.stringify(query, null, 2));
+    
     const groups = await Group.find(query)
       .populate("creator", "firstName lastName avatar")
       .populate("members.user", "firstName lastName avatar")
       .populate("admins", "firstName lastName avatar")
       .sort({ createdAt: -1 }); // Sort by newest first
 
+    console.log(`[getAllGroups] Found ${groups.length} groups matching query`);
+
     // Add a flag to indicate if user is a member of each group
     const groupsWithMembership = groups.map(group => {
       const groupObj = group.toObject();
+      // Check if user is a member - this correctly returns false for non-members
       groupObj.isMember = isGroupMember(group, userId);
+      
       // Add imageUrl from avatar if not present
       if (!groupObj.imageUrl && groupObj.avatar) {
         groupObj.imageUrl = groupObj.avatar;
       }
+      
       // Ensure topicType is included in response
       if (!groupObj.topicType) {
         // Infer from name if not set
@@ -120,18 +137,27 @@ const getAllGroups = async (req, res) => {
           groupObj.topicType = 'healing';
         }
       }
+      
+      // Debug logging for all groups
+      console.log(`[getAllGroups] Group: "${groupObj.name}", type: ${groupObj.type}, isMember: ${groupObj.isMember}, members: ${groupObj.members?.length || 0}, isActive: ${groupObj.isActive}, deletedAt: ${groupObj.deletedAt}`);
+      
       return groupObj;
     });
 
+    console.log(`[getAllGroups] Returning ${groupsWithMembership.length} groups to user ${userId}`);
+    console.log(`[getAllGroups] Groups with isMember=true: ${groupsWithMembership.filter(g => g.isMember).length}`);
+    
     res.status(200).json({
       success: true,
       groups: groupsWithMembership || [] // Return all discoverable groups
     });
   } catch (error) {
-    console.error("Error fetching groups:", error);
+    console.error("[getAllGroups] Error fetching groups:", error);
+    console.error("[getAllGroups] Error stack:", error.stack);
     res.status(500).json({
       success: false,
       message: "Failed to fetch groups",
+      error: error.message,
       groups: [] // Return empty array on error
     });
   }
