@@ -115,70 +115,117 @@ const getUserChats = async (req, res) => {
   }
 };
 const createDirectChat = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
     const { participantId } = req.body;
     const userId = req.user._id;
 
     // 1. Validate input
     if (!participantId || !mongoose.Types.ObjectId.isValid(participantId)) {
-      await session.abortTransaction();
-      return res.status(400).json({ success: false, message: "Invalid participant ID" });
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid participant ID" 
+      });
+    }
+
+    // Prevent users from chatting with themselves
+    if (userId.toString() === participantId.toString()) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Cannot create a chat with yourself" 
+      });
     }
 
     // 2. Verify users exist
     const [user, participant] = await Promise.all([
-      User.findById(userId).session(session),
-      User.findById(participantId).session(session)
+      User.findById(userId),
+      User.findById(participantId)
     ]);
 
     if (!user || !participant) {
-      await session.abortTransaction();
-      return res.status(404).json({ success: false, message: "User not found" });
-    }
-
-    // 3. Check for existing chats (transaction-safe)
-    const existingChat = await Chat.findOne({
-      type: "direct",
-      participants: { $all: [userId, participantId], $size: 2 }
-    }).session(session);
-
-    if (existingChat) {
-      await session.commitTransaction();
-      return res.json({ 
-        success: true, 
-        data: await existingChat.populate('participants') 
+      return res.status(404).json({ 
+        success: false, 
+        message: "User not found" 
       });
     }
 
-    // 4. Create new chat
+    // 3. Check for existing chat (without transaction to avoid issues)
+    const existingChat = await Chat.findOne({
+      type: "direct",
+      participants: { $all: [userId, participantId], $size: 2 },
+      isActive: true
+    }).populate('participants', 'firstName lastName profilePicture lastActive isOnline');
+
+    if (existingChat) {
+      // Format the response similar to getUserChats
+      const otherParticipant = existingChat.participants.find(
+        p => p._id.toString() !== userId.toString()
+      );
+      
+      return res.json({ 
+        success: true, 
+        data: {
+          ...existingChat.toObject(),
+          chatName: otherParticipant 
+            ? `${otherParticipant.firstName || ''} ${otherParticipant.lastName || ''}`.trim()
+            : 'Deleted User',
+          chatImage: otherParticipant?.profilePicture || null,
+          isOnline: otherParticipant?.isOnline || false,
+          lastActive: otherParticipant?.lastActive || null
+        }
+      });
+    }
+
+    // 4. Create new chat (no transaction needed for simple insert)
     const chat = new Chat({
       type: "direct",
       participants: [userId, participantId],
       participantSettings: [
-        { user: userId, notification: 'all' },
-        { user: participantId, notification: 'all' }
-      ]
+        { 
+          user: userId, 
+          isMuted: false,
+          joinedAt: new Date()
+        },
+        { 
+          user: participantId, 
+          isMuted: false,
+          joinedAt: new Date()
+        }
+      ],
+      isActive: true
     });
 
-    await chat.save({ session });
-    await session.commitTransaction();
+    await chat.save();
+
+    // Populate participants before sending response
+    await chat.populate('participants', 'firstName lastName profilePicture lastActive isOnline');
+
+    // Format the response
+    const otherParticipant = chat.participants.find(
+      p => p._id.toString() !== userId.toString()
+    );
 
     res.status(201).json({ 
       success: true, 
-      data: await chat.populate('participants') 
+      message: "Chat created successfully",
+      data: {
+        ...chat.toObject(),
+        chatName: otherParticipant 
+          ? `${otherParticipant.firstName || ''} ${otherParticipant.lastName || ''}`.trim()
+          : 'Deleted User',
+        chatImage: otherParticipant?.profilePicture || null,
+        isOnline: otherParticipant?.isOnline || false,
+        lastActive: otherParticipant?.lastActive || null,
+        unreadCount: 0
+      }
     });
   } catch (error) {
-    await session.abortTransaction();
     console.error("Chat creation error:", error);
+    console.error("Error stack:", error.stack);
     res.status(500).json({ 
       success: false, 
-      message: error.message || "Chat creation failed" 
+      message: error.message || "Chat creation failed",
+      ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
     });
-  } finally {
-    session.endSession();
   }
 };
  const getChatMessages = async (req, res) => {
