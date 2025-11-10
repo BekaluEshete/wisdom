@@ -11,7 +11,83 @@ const isGroupAdmin = (group, userId) => {
 
 // Helper function to check if user is group member
 const isGroupMember = (group, userId) => {
-  return group.members.some(member => member.user.toString() === userId.toString());
+  try {
+    if (!group) {
+      console.log("[isGroupMember] Group is null or undefined");
+      return false;
+    }
+    
+    if (!userId) {
+      console.log("[isGroupMember] UserId is null or undefined");
+      return false;
+    }
+    
+    // Convert userId to string safely
+    let userIdStr;
+    try {
+      userIdStr = userId.toString();
+    } catch (e) {
+      console.error("[isGroupMember] Error converting userId to string:", e);
+      return false;
+    }
+    
+    if (!group.members) {
+      return false;
+    }
+    
+    if (!Array.isArray(group.members)) {
+      console.log("[isGroupMember] Members is not an array:", typeof group.members);
+      return false;
+    }
+    
+    if (group.members.length === 0) {
+      return false;
+    }
+    
+    return group.members.some(member => {
+      try {
+        if (!member) {
+          return false;
+        }
+        
+        if (!member.user) {
+          return false;
+        }
+        
+        // Handle both ObjectId and populated user object
+        let memberUserId;
+        if (member.user._id) {
+          // Populated user object
+          try {
+            memberUserId = member.user._id.toString();
+          } catch (e) {
+            console.error("[isGroupMember] Error converting member.user._id to string:", e);
+            return false;
+          }
+        } else if (member.user.toString) {
+          // ObjectId
+          try {
+            memberUserId = member.user.toString();
+          } catch (e) {
+            console.error("[isGroupMember] Error converting member.user to string:", e);
+            return false;
+          }
+        } else {
+          // Already a string
+          memberUserId = member.user;
+        }
+        
+        return memberUserId === userIdStr;
+      } catch (memberError) {
+        console.error("[isGroupMember] Error processing member:", memberError);
+        return false;
+      }
+    });
+  } catch (error) {
+    console.error("[isGroupMember] Error checking membership:", error);
+    console.error("[isGroupMember] Error stack:", error.stack);
+    return false;
+  }
 };
 
 // Group CRUD Operations
@@ -69,8 +145,28 @@ const createGroup = async (req, res) => {
 
 const getAllGroups = async (req, res) => {
   try {
+    // Validate user authentication
+    if (!req.user || !req.user._id) {
+      console.error("[getAllGroups] No authenticated user found");
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+        groups: []
+      });
+    }
+    
     const userId = req.user._id;
     console.log(`[getAllGroups] User ${userId} requesting groups`);
+    
+    // Ensure userId is a valid ObjectId or string
+    if (!userId) {
+      console.error("[getAllGroups] Invalid userId");
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID",
+        groups: []
+      });
+    }
     
     // Ensure default circles exist before fetching
     // Pass the authenticated user ID so circles can be created even if no other users exist
@@ -104,45 +200,122 @@ const getAllGroups = async (req, res) => {
     
     console.log(`[getAllGroups] Query:`, JSON.stringify(query, null, 2));
     
-    const groups = await Group.find(query)
-      .populate("creator", "firstName lastName avatar")
-      .populate("members.user", "firstName lastName avatar")
-      .populate("admins", "firstName lastName avatar")
-      .sort({ createdAt: -1 }); // Sort by newest first
-
-    console.log(`[getAllGroups] Found ${groups.length} groups matching query`);
+    let groups = [];
+    try {
+      groups = await Group.find(query)
+        .populate({
+          path: "creator",
+          select: "firstName lastName avatar",
+        })
+        .populate({
+          path: "members.user",
+          select: "firstName lastName avatar",
+        })
+        .populate({
+          path: "admins",
+          select: "firstName lastName avatar",
+        })
+        .lean() // Use lean() to get plain JavaScript objects
+        .sort({ createdAt: -1 }); // Sort by newest first
+      
+      console.log(`[getAllGroups] Found ${groups.length} groups matching query`);
+      
+      // Ensure all groups have required fields
+      groups = groups.map(group => {
+        // Ensure members is always an array
+        if (!group.members || !Array.isArray(group.members)) {
+          group.members = [];
+        }
+        // Ensure admins is always an array
+        if (!group.admins || !Array.isArray(group.admins)) {
+          group.admins = [];
+        }
+        // Ensure creator exists or set to null
+        if (!group.creator) {
+          group.creator = null;
+        }
+        return group;
+      });
+    } catch (queryError) {
+      console.error(`[getAllGroups] Error executing query:`, queryError);
+      console.error(`[getAllGroups] Query error stack:`, queryError.stack);
+      throw queryError;
+    }
 
     // Add a flag to indicate if user is a member of each group
-    const groupsWithMembership = groups.map(group => {
-      const groupObj = group.toObject();
-      // Check if user is a member - this correctly returns false for non-members
-      groupObj.isMember = isGroupMember(group, userId);
-      
-      // Add imageUrl from avatar if not present
-      if (!groupObj.imageUrl && groupObj.avatar) {
-        groupObj.imageUrl = groupObj.avatar;
-      }
-      
-      // Ensure topicType is included in response
-      if (!groupObj.topicType) {
-        // Infer from name if not set
-        const name = (groupObj.name || '').toLowerCase();
-        if (name.includes('single') || name.includes('purposeful')) {
-          groupObj.topicType = 'single';
-        } else if (name.includes('marriage') || name.includes('ministry')) {
-          groupObj.topicType = 'marriage';
-        } else if (name.includes('motherhood') || name.includes('mother')) {
-          groupObj.topicType = 'motherhood';
-        } else if (name.includes('healing') || name.includes('forgiveness')) {
-          groupObj.topicType = 'healing';
+    // Since we're using lean(), groups are already plain objects
+    const groupsWithMembership = groups.map((group, index) => {
+      try {
+        if (!group) {
+          console.error(`[getAllGroups] Group at index ${index} is null or undefined`);
+          return null;
         }
+        
+        const groupObj = { ...group }; // Create a copy to avoid mutating original
+        
+        // Ensure members array exists
+        if (!groupObj.members) {
+          groupObj.members = [];
+        }
+        
+        // Check if user is a member - this correctly returns false for non-members
+        try {
+          // Pass groupObj (plain object) instead of group to avoid Mongoose document issues
+          groupObj.isMember = isGroupMember(groupObj, userId);
+        } catch (memberError) {
+          console.error(`[getAllGroups] Error checking membership for group ${groupObj._id || groupObj.id || 'unknown'}:`, memberError);
+          console.error(`[getAllGroups] Membership error message:`, memberError.message);
+          console.error(`[getAllGroups] Membership error stack:`, memberError.stack);
+          groupObj.isMember = false; // Default to false on error
+        }
+        
+        // Add imageUrl from avatar if not present
+        if (!groupObj.imageUrl && groupObj.avatar) {
+          groupObj.imageUrl = groupObj.avatar;
+        }
+        
+        // Ensure topicType is included in response
+        if (!groupObj.topicType) {
+          // Infer from name if not set
+          const name = (groupObj.name || '').toLowerCase();
+          if (name.includes('single') || name.includes('purposeful')) {
+            groupObj.topicType = 'single';
+          } else if (name.includes('marriage') || name.includes('ministry')) {
+            groupObj.topicType = 'marriage';
+          } else if (name.includes('motherhood') || name.includes('mother')) {
+            groupObj.topicType = 'motherhood';
+          } else if (name.includes('healing') || name.includes('forgiveness')) {
+            groupObj.topicType = 'healing';
+          }
+        }
+        
+        // Debug logging for all groups
+        const memberCount = Array.isArray(groupObj.members) ? groupObj.members.length : 0;
+        console.log(`[getAllGroups] Group: "${groupObj.name || 'unnamed'}", type: ${groupObj.type || 'unknown'}, isMember: ${groupObj.isMember}, members: ${memberCount}, isActive: ${groupObj.isActive}, deletedAt: ${groupObj.deletedAt || 'null'}`);
+        
+        return groupObj;
+      } catch (error) {
+        console.error(`[getAllGroups] Error processing group at index ${index}:`, error);
+        console.error(`[getAllGroups] Error message:`, error.message);
+        console.error(`[getAllGroups] Error stack:`, error.stack);
+        console.error(`[getAllGroups] Group data:`, group ? JSON.stringify(group, null, 2) : 'null');
+        
+        // Return a safe object or null (will be filtered out)
+        if (!group) {
+          return null;
+        }
+        
+        return {
+          _id: group._id || group.id || 'unknown',
+          name: group.name || 'Unknown Group',
+          type: group.type || 'public',
+          isMember: false,
+          members: [],
+          isActive: group.isActive !== undefined ? group.isActive : true,
+          deletedAt: group.deletedAt || null,
+        };
       }
-      
-      // Debug logging for all groups
-      console.log(`[getAllGroups] Group: "${groupObj.name}", type: ${groupObj.type}, isMember: ${groupObj.isMember}, members: ${groupObj.members?.length || 0}, isActive: ${groupObj.isActive}, deletedAt: ${groupObj.deletedAt}`);
-      
-      return groupObj;
-    });
+    }).filter(group => group !== null); // Remove any null groups
 
     console.log(`[getAllGroups] Returning ${groupsWithMembership.length} groups to user ${userId}`);
     console.log(`[getAllGroups] Groups with isMember=true: ${groupsWithMembership.filter(g => g.isMember).length}`);
