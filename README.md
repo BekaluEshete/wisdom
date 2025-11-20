@@ -509,7 +509,7 @@ This project is licensed under the MIT License.
 
 ## 👥 Support
 
-For support, email bekelueshete@gmail.com or create an issue in the repository.
+For support, email bekelueshete@gmail.com or tommr2323@gmail.com or  create an issue in the repository.
 
 ## 🙏 Acknowledgments
 
