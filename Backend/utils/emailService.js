@@ -1,22 +1,25 @@
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-// Initialize Transporter with Gmail (Explicit config for Render compatibility)
+// Initialize Transporter with Gmail (Configured for Port 587 STARTTLS)
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 465,
-  secure: true, // Use SSL/TLS (Port 465)
+  port: 587,
+  secure: false, // Use STARTTLS (Port 587)
   auth: {
     user: process.env.GMAIL_USER || process.env.EMAIL_USER,
     pass: process.env.GMAIL_APP_PASSWORD,
   },
   // Increased timeouts for Render environment
-  connectionTimeout: 20000, // 20 seconds
+  connectionTimeout: 20000,
   greetingTimeout: 20000,
   socketTimeout: 30000,
+  // Detailed logging for debugging
+  debug: true,
+  logger: true,
 });
 
-console.log('🔧 Email Service: Using Nodemailer (Gmail SMTPS 465)');
+console.log('🔧 Email Service: Using Nodemailer (Gmail STARTTLS 587 + Debug)');
 
 const wrapEmail = (title, content) => `
 <!DOCTYPE html>
