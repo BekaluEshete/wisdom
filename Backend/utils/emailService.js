@@ -1,10 +1,16 @@
+const nodemailer = require('nodemailer');
 require('dotenv').config();
-const { Resend } = require('resend');
 
-// Initialize Resend - FORCE RESEND ON RENDER
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialize Transporter with Gmail (Verified working)
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER || process.env.EMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD,
+  },
+});
 
-console.log('🔧 Email Service: Using RESEND (Gmail timeout on Render)');
+console.log('🔧 Email Service: Using Nodemailer (Gmail)');
 
 const wrapEmail = (title, content) => `
 <!DOCTYPE html>
@@ -13,8 +19,6 @@ const wrapEmail = (title, content) => `
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
-  <meta name="x-purpose" content="transactional">
-  <meta name="x-category" content="account">
 </head>
 <body style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #fdf9f4; margin: 0; padding: 20px;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 40px 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
@@ -28,44 +32,26 @@ const wrapEmail = (title, content) => `
     <div style="font-size: 14px; color: #777; text-align: center;">
       <p>"She is clothed with strength and dignity, and she laughs without fear of the future."<br><strong>– Proverbs 31:25</strong></p>
       <p>Blessings,<br><strong>The WisdomWalk Team</strong></p>
-      <!-- Add unsubscribe link for better reputation -->
-      <p style="font-size: 12px; color: #999; margin-top: 20px;">
-        <a href="https://yourdomain.com/unsubscribe" style="color: #999;">Unsubscribe</a> | 
-        <a href="https://yourdomain.com/privacy" style="color: #999;">Privacy Policy</a>
-      </p>
     </div>
   </div>
 </body>
 </html>
 `;
 
-// SIMPLIFIED - Only use Resend (no Gmail fallback)
 const sendEmail = async (to, subject, html) => {
-  console.log(`📧 Sending email to: ${to}`);
-  
-  try {
-    if (!process.env.RESEND_API_KEY) {
-      throw new Error('RESEND_API_KEY is not configured');
-    }
+  console.log(`📧 Attempting to send email to: ${to}`);
 
-    console.log('🔄 Using Resend email service...');
-    
-    const { data, error } = await resend.emails.send({
-      from: 'WisdomWalk <onboarding@resend.dev>',
-      to: [to],
+  try {
+    const info = await transporter.sendMail({
+      from: `"WisdomWalk" <${process.env.GMAIL_USER || process.env.EMAIL_USER}>`,
+      to: to,
       subject: subject,
       html: html,
     });
 
-    if (error) {
-      console.error('❌ Resend API Error:', error);
-      throw new Error(`Email failed: ${error.message}`);
-    }
-
-    console.log('✅ Email sent successfully via Resend!');
-    console.log('   Email ID:', data.id);
-    
-    return data;
+    console.log('✅ Email sent successfully via Gmail!');
+    console.log('   Message ID:', info.messageId);
+    return info;
   } catch (error) {
     console.error('❌ Email Error:', error.message);
     throw error;
@@ -73,8 +59,8 @@ const sendEmail = async (to, subject, html) => {
 };
 
 const sendVerificationEmail = async (email, firstName, code) => {
-  console.log(`🎯 Sending verification to ${email}, code: ${code}`);
-  
+  console.log(`🎯 Sending verification code [${code}] to ${email}`);
+
   try {
     const content = `
       <p>Hi <strong>${firstName}</strong>,</p>
@@ -89,10 +75,8 @@ const sendVerificationEmail = async (email, firstName, code) => {
       </p>
       <p>If you didn't create an account with WisdomWalk, please ignore this email.</p>
     `;
-    
-    const result = await sendEmail(email, 'Verify Your WisdomWalk Account', wrapEmail('Email Verification', content));
-    console.log('✅ Verification email sent successfully!');
-    return result;
+
+    return await sendEmail(email, 'Verify Your WisdomWalk Account', wrapEmail('Email Verification', content));
   } catch (error) {
     console.error('❌ Failed to send verification email:', error.message);
     throw error;
@@ -101,7 +85,7 @@ const sendVerificationEmail = async (email, firstName, code) => {
 
 const sendPasswordResetEmail = async (email, code, firstName) => {
   console.log(`🎯 Sending password reset to ${email}`);
-  
+
   try {
     const content = `
       <p>Hello <strong>${firstName}</strong>,</p>
@@ -117,7 +101,7 @@ const sendPasswordResetEmail = async (email, code, firstName) => {
       </p>
       <p>If you didn't request a password reset, please ignore this email and your password will remain unchanged.</p>
     `;
-    
+
     await sendEmail(email, '🔐 Reset Your Password - WisdomWalk', wrapEmail('Password Reset', content));
     console.log('✅ Password reset email sent successfully!');
   } catch (error) {
@@ -142,7 +126,7 @@ const sendAdminNotificationEmail = async (adminEmail, subject, message, user) =>
       </div>
       <p>Please review this registration in the admin dashboard.</p>
     `;
-    
+
     await sendEmail(adminEmail, subject, wrapEmail('Admin Notification', content));
     console.log('✅ Admin notification sent successfully!');
   } catch (error) {
@@ -158,7 +142,7 @@ const sendUserNotificationEmail = async (userEmail, subject, message, firstName)
       <p>${message}</p>
       <p>Thank you for being part of our WisdomWalk community!</p>
     `;
-    
+
     await sendEmail(userEmail, subject, wrapEmail('Notification', content));
   } catch (error) {
     console.error('Failed to send user notification:', error.message);
@@ -179,7 +163,7 @@ const sendReportEmailToAdmin = async (adminEmail, post, reportedBy) => {
       </div>
       <p>Please review this report in the admin dashboard and take appropriate action.</p>
     `;
-    
+
     await sendEmail(adminEmail, '🚨 New Post Report - WisdomWalk', wrapEmail('Content Report Alert', content));
   } catch (error) {
     console.error('Failed to send report email:', error.message);
@@ -200,7 +184,7 @@ const sendNewPostEmailToAdmin = async (adminEmail, post) => {
         <p><strong>Published:</strong> ${new Date().toLocaleString()}</p>
       </div>
     `;
-    
+
     await sendEmail(adminEmail, '📝 New Post Published - WisdomWalk', wrapEmail('New Community Post', content));
   } catch (error) {
     console.error('Failed to send new post email:', error.message);
@@ -220,7 +204,7 @@ const sendBlockedEmailToUser = async (userEmail, reason, firstName) => {
       <p>During this time, you won't be able to access your account or use WisdomWalk services.</p>
       <p>If you believe this action was taken in error, please contact our support team for assistance.</p>
     `;
-    
+
     await sendEmail(userEmail, '🚫 Account Temporarily Blocked - WisdomWalk', wrapEmail('Account Status Update', content));
   } catch (error) {
     console.error('Failed to send blocked email:', error.message);
@@ -239,7 +223,7 @@ const sendUnblockedEmailToUser = async (userEmail, firstName) => {
       <p>You can now log in and continue your journey with WisdomWalk. We're glad to have you back in our community!</p>
       <p>If you have any questions, please don't hesitate to contact our support team.</p>
     `;
-    
+
     await sendEmail(userEmail, '✅ Account Unblocked - WisdomWalk', wrapEmail('Welcome Back!', content));
   } catch (error) {
     console.error('Failed to send unblocked email:', error.message);
@@ -259,7 +243,7 @@ const sendBannedEmailToUser = async (userEmail, reason, firstName) => {
       <p>This decision was made due to a serious violation of our community guidelines.</p>
       <p>If you would like more information about this action, you may contact our admin team for further details.</p>
     `;
-    
+
     await sendEmail(userEmail, '❌ Account Permanently Banned - WisdomWalk', wrapEmail('Account Termination Notice', content));
   } catch (error) {
     console.error('Failed to send banned email:', error.message);
@@ -277,7 +261,7 @@ const sendLikeNotificationEmail = async (userEmail, likerName, postTitle) => {
       </div>
       <p>Keep sharing your wisdom and inspiring others in our community!</p>
     `;
-    
+
     await sendEmail(userEmail, '❤️ New Like on Your Post - WisdomWalk', wrapEmail('Your Post Got Liked!', content));
   } catch (error) {
     console.error('Failed to send like notification:', error.message);
@@ -297,7 +281,7 @@ const sendCommentNotificationEmail = async (userEmail, commenterName, comment, p
       </div>
       <p>Join the conversation and continue building connections in our WisdomWalk community!</p>
     `;
-    
+
     await sendEmail(userEmail, '💬 New Comment on Your Post - WisdomWalk', wrapEmail('New Comment Received', content));
   } catch (error) {
     console.error('Failed to send comment notification:', error.message);
