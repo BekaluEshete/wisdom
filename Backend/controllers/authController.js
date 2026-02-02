@@ -88,14 +88,8 @@ const register = async (req, res) => {
 
     await user.save()
 
-    // Initialize default circles if this is one of the first users
-    try {
-      const { ensureDefaultCircles } = require("../utils/initializeCircles");
-      await ensureDefaultCircles();
-    } catch (circleError) {
-      console.error("Warning: Could not initialize default circles after user registration:", circleError.message);
-      // Continue with registration even if circle initialization fails
-    }
+    // Initialize default circles check is handled at server startup
+    // Removed redundant check here to reduce registration latency
 
     // Send email to user
     let emailSent = false;
