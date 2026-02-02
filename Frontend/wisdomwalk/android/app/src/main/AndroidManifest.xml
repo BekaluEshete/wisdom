@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.wisdomwalk">
+    package="com.afomi.wisdomwalk">
 
     <!-- Required for web-based URLs and network operations -->
     <uses-permission android:name="android.permission.INTERNET"/>

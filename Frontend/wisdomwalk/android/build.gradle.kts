@@ -1,4 +1,4 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.
+// android/build.gradle.kts   ← PROJECT-LEVEL (not the app module one)
 
 buildscript {
     repositories {
@@ -6,10 +6,14 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        // Use a version compatible with your Gradle and Java version
-        classpath("com.android.tools.build:gradle:8.3.0")
-        // Add other classpaths if needed, e.g., for Kotlin, Firebase, etc.
-        // classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24")
+        // REQUIRED for reliable 16 KB page size support
+        classpath("com.android.tools.build:gradle:8.7.3")
+
+        // Kotlin plugin (required by Flutter)
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
+
+        // Optional but recommended if you use any Google services / Firebase
+        // classpath("com.google.gms:google-services:4.4.2")
     }
 }
 
@@ -20,21 +24,20 @@ allprojects {
     }
 }
 
-// Optional: change the root build directory
-val newBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build").get()
-rootProject.layout.buildDirectory.value(newBuildDir)
+// ──────────────────────────────────────────────────────────────
+// Clean & unified build directory (keeps things tidy)
+rootProject.buildDir = file("../build")
 
 subprojects {
-    val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
-    project.layout.buildDirectory.value(newSubprojectBuildDir)
+    project.buildDir = file("${rootProject.buildDir}/${project.name}")
 }
 
-// Make sure app is evaluated first (optional)
+// Ensure :app is configured first (helps some edge cases)
 subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// Register a clean task
+// Clean task
 tasks.register<Delete>("clean") {
-    delete(rootProject.layout.buildDirectory)
+    delete(rootProject.buildDir)
 }
