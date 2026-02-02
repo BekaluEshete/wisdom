@@ -1,25 +1,10 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 require('dotenv').config();
 
-// Initialize Transporter with Gmail (Configured for Port 587 STARTTLS)
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // Use STARTTLS (Port 587)
-  auth: {
-    user: process.env.GMAIL_USER || process.env.EMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
-  },
-  // Increased timeouts for Render environment
-  connectionTimeout: 20000,
-  greetingTimeout: 20000,
-  socketTimeout: 30000,
-  // Detailed logging for debugging
-  debug: true,
-  logger: true,
-});
+// Initialize Resend with API Key (Bypasses Render SMTP port blocking)
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-console.log('🔧 Email Service: Using Nodemailer (Gmail STARTTLS 587 + Debug)');
+console.log('🔧 Email Service: Using Resend HTTP API');
 
 const wrapEmail = (title, content) => `
 <!DOCTYPE html>
@@ -48,19 +33,24 @@ const wrapEmail = (title, content) => `
 `;
 
 const sendEmail = async (to, subject, html) => {
-  console.log(`📧 Attempting to send email to: ${to}`);
+  console.log(`📧 Attempting to send email via Resend to: ${to}`);
 
   try {
-    const info = await transporter.sendMail({
-      from: `"WisdomWalk" <${process.env.GMAIL_USER || process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: 'WisdomWalk <onboarding@resend.dev>',
       to: to,
       subject: subject,
       html: html,
     });
 
-    console.log('✅ Email sent successfully via Gmail!');
-    console.log('   Message ID:', info.messageId);
-    return info;
+    if (error) {
+      console.error('❌ Resend API Error:', error);
+      throw new Error(error.message);
+    }
+
+    console.log('✅ Email sent successfully via Resend API!');
+    console.log('   Message ID:', data.id);
+    return data;
   } catch (error) {
     console.error('❌ Email Error:', error.message);
     throw error;
