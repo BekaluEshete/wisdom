@@ -2,7 +2,7 @@ const User = require("../models/User")
 const { generateToken, generateJWT, formatUserResponse } = require("../utils/helpers")
 const { sendVerificationEmail, sendPasswordResetEmail, sendAdminNotificationEmail } = require("../utils/emailService")
 const { saveVerificationDocument } = require("../utils/storageHelper")
- 
+
 
 
 const register = async (req, res) => {
@@ -39,26 +39,30 @@ const register = async (req, res) => {
     const sanitizedEmail = email.replace(/[^a-zA-Z0-9]/g, '_')
 
     // Upload Live Photo
+    console.log(`📸 Uploading live photo for ${email}...`);
     const livePhotoResult = await saveVerificationDocument(
       req.files.livePhoto[0].buffer,
       sanitizedEmail,
       'live_photo',
       req.files.livePhoto[0].originalname
     )
+    console.log(`✅ Live photo uploaded: ${livePhotoResult.url}`);
 
     // Upload National ID
+    console.log(`🪪 Uploading national ID for ${email}...`);
     const nationalIdResult = await saveVerificationDocument(
       req.files.nationalId[0].buffer,
       sanitizedEmail,
       'national_id',
       req.files.nationalId[0].originalname
     )
+    console.log(`✅ National ID uploaded: ${nationalIdResult.url}`);
 
     // Generate email verification code (4-digit code)
     const verificationCode = Math.floor(1000 + Math.random() * 9000).toString()
     const emailVerificationExpires = new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
-    
-    console.log(`Generated verification code for ${email}: ${verificationCode}`)
+
+    console.log(`🎯 Generated verification code for ${email}: ${verificationCode}`)
 
     // Create new user
     const user = new User({
@@ -131,7 +135,7 @@ const register = async (req, res) => {
     // Prepare response
     const response = {
       success: true,
-      message: emailSent 
+      message: emailSent
         ? 'Registration successful! Please check your email to verify your account.'
         : 'Registration successful! However, we encountered an issue sending the verification email. Please use the resend verification feature or contact support.',
       data: {
@@ -164,7 +168,7 @@ const register = async (req, res) => {
   }
 }
 
- 
+
 
 
 // Verify email
@@ -232,20 +236,20 @@ const login = async (req, res) => {
       })
     }
     console.log("User found:", user.canAccess());
-       console.log("User details:", {
-  isEmailVerified: user.isEmailVerified,
-  status: user.status,
-  blockedUntil: user.blockedUntil
-});
+    console.log("User details:", {
+      isEmailVerified: user.isEmailVerified,
+      status: user.status,
+      blockedUntil: user.blockedUntil
+    });
     // Check if user can access the app
     if (!user.canAccess()) {
       const statusMessages = {
         emailNotVerified: "Please verify your email address before logging in.",
-         blocked: `Your account is temporarily blocked until ${user.blockedUntil?.toLocaleDateString()}.`,
+        blocked: `Your account is temporarily blocked until ${user.blockedUntil?.toLocaleDateString()}.`,
         banned: "Your account has been permanently banned. Please contact support for more information.",
       }
 
-      let message = "Account access restricted." 
+      let message = "Account access restricted."
       if (!user.isEmailVerified) message = statusMessages.emailNotVerified
       else if (user.status === "blocked") message = statusMessages.blocked
       else if (user.status === "banned") message = statusMessages.banned
@@ -267,22 +271,22 @@ const login = async (req, res) => {
     await user.save()
 
     // Generate JWT token
-const token = generateJWT({
+    const token = generateJWT({
       userId: user._id,
       isAdminVerified: user.isAdminVerified,
       isGlobalAdmin: user.isGlobalAdmin,
       isAdmin: user.isAdmin,
     });
-   
+
 
     res.cookie('token', token, {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'Strict',
-  maxAge: 24 * 60 * 60 * 1000, // 1 day
-  
-});
- res.json({
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Strict',
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+
+    });
+    res.json({
       success: true,
       message: "Login successful",
       data: {
@@ -539,7 +543,7 @@ const changePassword = async (req, res) => {
 
   } catch (error) {
     console.error("Change password error:", error);
-    
+
     // More specific error handling
     if (error.name === 'ValidationError') {
       return res.status(400).json({
@@ -548,7 +552,7 @@ const changePassword = async (req, res) => {
         code: "validation_error"
       });
     }
-    
+
     if (error.name === 'MongoError') {
       return res.status(503).json({
         success: false,
